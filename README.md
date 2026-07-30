@@ -28,6 +28,7 @@ USB stick.
 - [Quick start](#quick-start)
 - [Install and run Ollama](#install-and-run-ollama)
 - [Use it from any device on your LAN](#use-it-from-any-device-on-your-lan)
+- [Install it as an app (PWA)](#install-it-as-an-app-pwa)
 - [The curated model catalog](#the-curated-model-catalog)
 - [Features](#features)
 - [Preferences and settings](#preferences-and-settings)
@@ -206,6 +207,80 @@ Ollama once:
 # or one-shot via CLI:
 sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /usr/local/bin/ollama
 ```
+
+---
+
+## Install it as an app (PWA)
+
+Nocta is a Progressive Web App. The browser can install it onto your phone,
+tablet, laptop, or desktop so it opens in its own window with its own icon,
+no address bar, and works offline once it has loaded.
+
+### Prerequisites
+
+PWA install needs a secure origin. That means either:
+
+- Serving the file over `https://` (GitHub Pages, Netlify, Cloudflare Pages,
+  your own domain with a TLS cert), or
+- Loading it from `http://localhost` / `http://127.0.0.1` while developing.
+
+Opening `ollama-chat.html` directly from disk (`file://`) will not work for
+PWA install — but the page itself still loads and the chat still functions.
+
+### On Chrome, Edge, Brave, or Arc (desktop)
+
+1. Open the page over `https://` or `localhost`.
+2. Look for the install icon in the right side of the address bar, or use
+   the **Install app** entry that appears in the sidebar once the page
+   detects it can be installed.
+3. Confirm the install prompt. Nocta will appear in your Applications
+   folder and Start menu.
+
+### On Android (Chrome, Edge, Samsung Internet)
+
+1. Open the page in Chrome.
+2. Tap the **three-dot menu** → **Install app** (or **Add to Home
+   screen**). The sidebar also shows an **Install app** row.
+3. The icon appears on your home screen and opens in standalone mode.
+
+### On iPhone and iPad (Safari)
+
+Safari does not surface a button for PWAs — install is one share-sheet tap
+away:
+
+1. Open the page in Safari.
+2. Tap the **Share** button (square with the up arrow).
+3. Scroll down and tap **Add to Home Screen**.
+4. Confirm the name. The icon appears on your home screen and opens
+   without Safari's chrome.
+
+The manifest declares `apple-mobile-web-app-capable` so the icon opens in
+standalone mode with a status-bar tint that matches the app theme.
+
+### On macOS (Safari)
+
+The same flow as iOS works in Safari 17 and later: **File → Add to
+Dock**. Nocta will appear in the Dock and the Applications folder with
+its own window and icon.
+
+### After install
+
+- The icon is the moon-glyph SVG in the `assets/` folder (rendered to PNG
+  at every standard size, including a maskable variant for Android).
+- The service worker (`sw.js`) caches the app shell and the four CDN
+  scripts (marked, KaTeX, highlight.js, fonts). Once you've opened the
+  app once online, it loads fully offline.
+- The app never phones home. Updates happen silently when you reopen the
+  app — the SW picks up the new HTML and asset list in the background.
+
+### Troubleshooting install
+
+| Symptom | Fix |
+|---------|-----|
+| Install button never appears | You are probably on `file://`. Serve over `http://localhost` or `https://`. |
+| "Add to Home Screen" is greyed out on iOS | You opened the page in a non-Safari browser. Use Safari. |
+| Install succeeds but the app opens in a browser tab | Your manifest is missing `display: standalone`. Open an issue with the browser + version. |
+| Offline launch shows the wrong theme | Hard-refresh (Shift+Reload) to force the SW to re-cache the latest HTML. |
 
 ---
 

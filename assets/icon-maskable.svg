@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c9cff"/>
+      <stop offset="50%" stop-color="#b98cff"/>
+      <stop offset="100%" stop-color="#5eead4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed background (safe area is the inner 80% circle) -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#bg)"/>
+  <rect x="0" y="0" width="512" height="512" fill="url(#glow)"/>
+
+  <!-- Everything below sits inside the 80% safe zone (radius ~205 from center) -->
+  <g transform="translate(256 256) scale(0.78)">
+    <circle cx="0" cy="-8" r="150" fill="#0f0f23" opacity="0.92"/>
+    <circle cx="55" cy="-35" r="140" fill="url(#bg)"/>
+    <ellipse cx="-50" cy="-70" rx="40" ry="22" fill="#ffffff" opacity="0.18" filter="url(#soft)"/>
+  </g>
+
+  <g fill="#ffffff" opacity="0.92">
+    <circle cx="148" cy="200" r="4"/>
+    <circle cx="364" cy="200" r="4"/>
+    <circle cx="148" cy="312" r="4"/>
+    <circle cx="364" cy="312" r="4"/>
+  </g>
+</svg>

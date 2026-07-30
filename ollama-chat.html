@@ -6,6 +6,23 @@
 <meta name="theme-color" content="#0a0a12">
 <meta name="description" content="Nocta — a beautiful local AI chat UI for Ollama">
 <title>Nocta — Local AI Chat</title>
+<!-- PWA manifest + icons. See manifest.webmanifest for full metadata. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png">
+<!-- Address-bar colour when the app is installed (matches --bg-0 in light mode too). -->
+<meta name="theme-color" content="#0a0a12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f3f8" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nocta">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="Nocta">
+<meta name="msapplication-TileColor" content="#0a0a12">
+<meta name="msapplication-TileImage" content="./assets/icon-maskable-512.png">
+<meta name="format-detection" content="telephone=no">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -923,6 +940,10 @@ body.ready{opacity:1;transition:opacity .25s ease;}
           <div class="settings-row" id="prefsBtn" role="button" tabindex="0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span class="label">Preferences</span>
+          </div>
+          <div class="settings-row" id="installAppBtn" role="button" tabindex="0" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 11 12 16 17 11"/><line x1="12" y1="2" x2="12" y2="16"/></svg>
+            <span class="label">Install app</span>
           </div>
           <div class="settings-row" id="exportBtn" role="button" tabindex="0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2351,6 +2372,53 @@ requestAnimationFrame(() => {
       setTimeout(() => loader.remove(), 400);
     }
   });
+});
+
+// Register the service worker so the app is installable on iOS, Android,
+// macOS, Windows, Linux and ChromeOS. Skip when the page is opened from
+// file:// — SWs require a secure origin (http/https).
+if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.protocol === 'https:')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // When a new version is waiting, ask it to take over immediately so
+      // users don't have to refresh twice after a deploy.
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      reg.addEventListener('updatefound', () => {
+        const next = reg.installing;
+        if (!next) return;
+        next.addEventListener('statechange', () => {
+          if (next.state === 'installed' && navigator.serviceWorker.controller) {
+            next.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(() => { /* offline or SW blocked — silently degrade */ });
+  });
+}
+
+// Wire the "Install app" sidebar row to Chrome/Edge's beforeinstallprompt.
+// Safari/iOS will simply never fire this event — users install via the
+// Share menu there.
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('installAppBtn');
+  if (btn) {
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      btn.hidden = true;
+      deferredInstallPrompt.prompt();
+      try { await deferredInstallPrompt.userChoice; } catch (_) {}
+      deferredInstallPrompt = null;
+    }, { once: true });
+  }
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('installAppBtn');
+  if (btn) btn.hidden = true;
 });
 </script>
 </body>
