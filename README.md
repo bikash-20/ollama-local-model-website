@@ -1,5 +1,15 @@
 # Nocta — a local AI chat for Ollama
 
+> **Just want to try it?**
+>
+> 1. Open **https://bikash-20.github.io/ollama-local-model-website/** in Chrome, Edge, or Brave.
+> 2. Install [Ollama](https://ollama.com/download) and pull a model: `ollama pull llama3.2`
+> 3. In Nocta's sidebar, pick the model and start chatting.
+>
+> The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the three lines above didn't work for you.
+
+---
+
 Nocta is a single self-contained HTML file that gives you a polished chat
 interface on top of a running [Ollama](https://ollama.com) daemon. There is
 no build step, no Node tooling, no backend to deploy. You open
