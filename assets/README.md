@@ -1,6 +1,6 @@
 # Assets
 
-Icons and other static assets referenced by `ollama-chat.html` and
+Icons and other static assets referenced by `index.html` (formerly `ollama-chat.html`) and
 `manifest.webmanifest`.
 
 ## Files

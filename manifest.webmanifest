@@ -3,7 +3,7 @@
   "short_name": "Nocta",
   "description": "A polished, single-file chat UI for a local Ollama instance. Stream responses from any model on your machine, render math, repair ragged tables, and keep everything private in your browser.",
   "id": "/",
-  "start_url": "./ollama-chat.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
@@ -66,7 +66,7 @@
       "name": "New chat",
       "short_name": "New chat",
       "description": "Open a fresh conversation",
-      "url": "./ollama-chat.html#new",
+      "url": "./#new",
       "icons": [
         { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png" }
       ]
@@ -75,7 +75,7 @@
       "name": "Preferences",
       "short_name": "Preferences",
       "description": "Change the server URL, system prompt, or temperature",
-      "url": "./ollama-chat.html#preferences",
+      "url": "./#preferences",
       "icons": [
         { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png" }
       ]

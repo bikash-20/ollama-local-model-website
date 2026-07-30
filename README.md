@@ -3,7 +3,7 @@
 Nocta is a single self-contained HTML file that gives you a polished chat
 interface on top of a running [Ollama](https://ollama.com) daemon. There is
 no build step, no Node tooling, no backend to deploy. You open
-`ollama-chat.html` in any modern browser and start talking to the model
+`index.html` in any modern browser and start talking to the model
 that is running on your machine — or on any other machine on your LAN.
 
 It is built with the quirks of local open-weight models in mind. Ragged
@@ -48,7 +48,7 @@ USB stick.
 
 ## What is Nocta?
 
-Nocta is one file, `ollama-chat.html`, that contains the markup, the
+Nocta is one file, `index.html`, that contains the markup, the
 styles, and the JavaScript for the whole app. You can:
 
 - Drop it on a USB stick and open it from any browser.
@@ -72,7 +72,7 @@ running Ollama daemon.
 
 ### 1. Get the file
 
-Clone the repo, or download `ollama-chat.html` directly from this
+Clone the repo, or download `index.html` directly from this
 repository. The HTML file is the only runtime file.
 
 ```bash
@@ -94,18 +94,18 @@ default endpoint in Nocta, so nothing else needs to change for local use.
 
 ### 3. Open the file
 
-Double-click `ollama-chat.html`, or:
+Double-click `index.html`, or:
 
 ```bash
 # macOS
-open ollama-chat.html
+open index.html
 
 # Linux
-xdg-open ollama-chat.html
+xdg-open index.html
 
 # Or serve it (any static server works)
 python3 -m http.server 8000
-# then visit http://localhost:8000/ollama-chat.html
+# then visit http://localhost:8000/
 ```
 
 The first time it loads you will see a small skeleton while the page
@@ -224,7 +224,7 @@ PWA install needs a secure origin. That means either:
   your own domain with a TLS cert), or
 - Loading it from `http://localhost` / `http://127.0.0.1` while developing.
 
-Opening `ollama-chat.html` directly from disk (`file://`) will not work for
+Opening `index.html` directly from disk (`file://`) will not work for
 PWA install — but the page itself still loads and the chat still functions.
 
 ### On Chrome, Edge, Brave, or Arc (desktop)
@@ -537,7 +537,7 @@ with the offending output and we will widen the heuristic.
 The first load pays the full CDN cost for fonts, marked, KaTeX, and
 highlight.js. Subsequent loads hit the browser cache. If you need it
 fully offline, vendor those four scripts into a sibling `vendor/`
-directory and swap the `<script src>` tags inside `ollama-chat.html`.
+directory and swap the `<script src>` tags inside `index.html`.
 
 ### Editing a user message regenerates the assistant reply but loses context
 
