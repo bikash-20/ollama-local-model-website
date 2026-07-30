@@ -362,8 +362,20 @@ never heard of the family before.
 
 ## Preferences and settings
 
-Click the gear icon in the sidebar to open **Preferences**. There are
-three settings:
+The **gear icon** lives in the **sidebar footer** — the pinned row of
+controls at the very bottom of the left sidebar. That footer is always
+visible, regardless of how many chats you have, and contains (from top
+to bottom):
+
+1. **Dark mode** toggle
+2. **Preferences** — the gear icon. This is what you want.
+3. **Install app** — only appears when the browser signals that the PWA
+   is installable on your device.
+4. **Export current chat**
+5. **Clear all chats**
+
+Click the **Preferences** row (the gear icon) to open the settings
+modal. There are three settings:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
