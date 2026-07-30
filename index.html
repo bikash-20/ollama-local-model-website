@@ -272,7 +272,8 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .chat-item .row2 .chat-time{margin-left:auto;flex-shrink:0;opacity:0.85;}
   .chat-item .chat-preview{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.7;}
 
-  .sidebar-footer{padding:12px 14px;border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:4px;}
+  .sidebar-footer{padding:12px 14px;border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:4px;flex-shrink:0;background:inherit;backdrop-filter:blur(12px);}
+  .chat-list{flex:1;min-height:0;overflow-y:auto;}
   .settings-row{
     display:flex;align-items:center;gap:10px;
     padding:8px 10px;border-radius:10px;
