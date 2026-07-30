@@ -1,0 +1,527 @@
+# 🌙 Nocta — Local AI Chat for Ollama
+
+> A beautiful, zero-dependency, single-file chat interface that talks to a local
+> [Ollama](https://ollama.com) instance. No build step. No backend. Just open
+> `ollama-chat.html` in any modern browser and start chatting with the model
+> running on your machine — or any other machine on your LAN.
+
+[![Made with vanilla JS](https://img.shields.io/badge/Made%20with-vanilla%20JS-f7df1e?logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![No build step](https://img.shields.io/badge/Build-none-success)](#-quick-start)
+[![No backend](https://img.shields.io/badge/Backend-none-success)](#-quick-start)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#-license)
+[![Crafted by Bikash Talukder](https://img.shields.io/badge/Crafted%20by-Bikash%20Talukder-8b5cf6)](#-credits)
+
+---
+
+## 📑 Table of contents
+
+- [✨ What is this?](#-what-is-this)
+- [🚀 Quick start](#-quick-start)
+- [📦 Install & run Ollama](#-install--run-ollama)
+- [🌐 Use it from any device on your LAN](#-use-it-from-any-device-on-your-lan)
+- [🤖 Curated model catalog](#-curated-model-catalog)
+- [💬 Features](#-features)
+- [⚙️ Preferences & settings](#️-preferences--settings)
+- [🧠 Math rendering (KaTeX)](#-math-rendering-katex)
+- [📊 Table repair](#-table-repair)
+- [🚀 Performance strategy](#-performance-strategy)
+- [⌨️ Keyboard shortcuts](#️-keyboard-shortcuts)
+- [💾 Where your data lives](#-where-your-data-lives)
+- [🛟 Troubleshooting](#-troubleshooting)
+- [🏗️ Architecture notes](#️-architecture-notes)
+- [🛣️ Roadmap](#️-roadmap)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+- [🙏 Credits](#-credits)
+
+---
+
+## ✨ What is this?
+
+**Nocta** is a single self-contained HTML file (`ollama-chat.html`) that
+provides a polished chat UI on top of a running [Ollama](https://ollama.com)
+daemon. Everything ships in one file — markup, styles, and JavaScript — so
+there's nothing to install on the client side. You can:
+
+- **Drop it on a USB stick** and open it from any browser.
+- **Host it** as a static file on any web server.
+- **Use it offline** once it's been loaded (the only network requirement is
+  talking to Ollama and the CDN scripts/fonts that are loaded with `defer`).
+
+It's specifically tuned for the quirks of running local open-weight models:
+ragged tables get auto-repaired, formulas that the model forgot to wrap in
+`$...$` delimiters still get rendered, and streaming responses don't
+re-render the world on every token.
+
+---
+
+## 🚀 Quick start
+
+You only need two things: the file itself, and a running Ollama daemon.
+
+### 1. Get the file
+
+Clone the repo, or just download `ollama-chat.html` directly from this
+repository (it's the only runtime file).
+
+```bash
+git clone https://github.com/bikash-20/ollama-local-model-website.git
+cd ollama-local-model-website
+```
+
+### 2. Start Ollama
+
+```bash
+# macOS / Linux
+ollama serve
+
+# or, if you installed the desktop app, just launch it
+```
+
+By default Ollama listens on `http://localhost:11434`. That's already the
+default endpoint in Nocta, so nothing else needs to change for local use.
+
+### 3. Open the file
+
+Double-click `ollama-chat.html`, or:
+
+```bash
+# macOS
+open ollama-chat.html
+
+# Linux
+xdg-open ollama-chat.html
+
+# Or serve it (any static server works)
+python3 -m http.server 8000
+# then visit http://localhost:8000/ollama-chat.html
+```
+
+The first time it loads you'll see a small skeleton while it boots, then
+the sidebar appears with your model list pulled from `/api/tags`. Start
+typing.
+
+> **That's it.** No build, no `npm install`, no Node version to manage.
+
+---
+
+## 📦 Install & run Ollama
+
+If you don't already have Ollama installed:
+
+| OS | Install command |
+|----|-----------------|
+| **macOS** | Download from <https://ollama.com/download/mac> or `brew install ollama` |
+| **Linux** | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| **Windows** | Download the installer from <https://ollama.com/download/windows> |
+
+Then pull a model:
+
+```bash
+ollama pull llama3.2:3b          # small, fast, default-first choice
+ollama pull qwen2.5-coder:7b     # great for code
+ollama pull deepseek-r1:7b       # distilled reasoning
+ollama pull gemma2:9b            # strong general model
+```
+
+The model list inside Nocta shows everything you've already pulled via
+`GET /api/tags`. Anything not installed yet is still listed as a suggestion
+in the catalog — click **Pull** to download it.
+
+---
+
+## 🌐 Use it from any device on your LAN
+
+The killer feature of running an LLM locally is that **any device on the
+same network** can reach it. Phone, tablet, a second laptop — they don't
+need Ollama installed, only a browser and the host's IP address.
+
+### Step 1 — bind Ollama to all interfaces
+
+By default Ollama only listens on `127.0.0.1`. Expose it on the LAN:
+
+```bash
+# macOS / Linux
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+```
+
+To make this permanent:
+
+```bash
+# macOS (launchd)
+launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
+
+# Linux (systemd)
+sudo systemctl edit ollama
+# add the line:
+#   [Service]
+#   Environment="OLLAMA_HOST=0.0.0.0:11434"
+```
+
+### Step 2 — find the host's IP
+
+```bash
+# macOS
+ipconfig getifaddr en0
+
+# Linux
+hostname -I | awk '{print $1}'
+```
+
+You'll get something like `192.168.1.42`.
+
+### Step 3 — point the UI at it
+
+Open Nocta, click the **gear icon** (top-right of the sidebar) to open
+**Preferences**, and set the **Server URL** to:
+
+```
+http://192.168.1.42:11434
+```
+
+Click **Test connection** to confirm it can reach Ollama, then **Save**.
+
+> 💡 The endpoint is persisted in `localStorage` under the key
+> `nocta_settings_v1.serverUrl`, so each device keeps its own pointer to
+> whichever host has the GPU.
+
+### Optional — firewall
+
+If `Test connection` fails on macOS, allow incoming connections for Ollama
+once:
+
+```bash
+# System Settings → Network → Firewall → allow ollama
+# or one-shot via CLI:
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /usr/local/bin/ollama
+```
+
+---
+
+## 🤖 Curated model catalog
+
+Nocta ships with a built-in catalog of popular Ollama models so you can
+**pull a model before you've ever opened the app**. Once `/api/tags`
+responds, the live installed list takes priority and the catalog becomes a
+fallback / suggestion list.
+
+The catalog covers (with metadata like family, parameter size, quantization,
+and format):
+
+- **Llama** — 3.2, 3.1, 3.3 (1B → 70B)
+- **Qwen 2.5** — including the **Coder** line for code generation
+- **Mistral / Mixtral** — including **Mistral Nemo** and **Mixtral 8x7B MoE**
+- **Phi-3** — Microsoft's compact reasoning models
+- **Gemma 2** — Google's open-weights line
+- **Codestral** — Mistral's code specialist
+- **DeepSeek R1** — distilled reasoning at multiple sizes
+
+Each entry carries a one-line description (e.g. *"Meta Llama 3.2 — small &
+fast chat model"*) so you can pick with confidence even when you've never
+heard of the family before.
+
+---
+
+## 💬 Features
+
+### Core chat
+
+- 💬 **Streaming responses** — tokens appear the instant Ollama produces them
+- 🧵 **Multiple chats** with a searchable sidebar
+- ✏️ **Edit & resend** — click any user message to edit it and regenerate from there
+- 📋 **Copy** any message with one click
+- 🔄 **Regenerate** the last assistant response against the same prompt
+- ⏹️ **Stop** a generation mid-stream without freezing the UI
+
+### UI & theming
+
+- 🌗 **Dark / light mode** toggle (persisted)
+- 📱 **Mobile-friendly** layout with collapsible sidebar and overlay
+- 🪟 **Collapsible sidebar** — keep only the chat on screen when you need room
+- ⚡ **Boot loader skeleton** — page paints fast, hydration happens after
+- 📐 **Responsive typography** that reads well from phone to ultrawide
+
+### Persistence
+
+- 💾 **All chats stored locally** in your browser's `localStorage`
+- 📤 **Export current chat** to a Markdown file
+- 🗑️ **Clear all chats** with confirmation
+
+### Streaming intelligence
+
+- 📈 **Live tokens/second** stat shown under each assistant message
+- 🧮 **Elapsed time** stat alongside token rate
+- 🛡️ **Streaming-aware rendering** — during a stream the assistant bubble
+  just appends text. The full Markdown → HTML pipeline runs **once** when the
+  stream completes. No more flickering, partial KaTeX, broken table rows.
+
+### Markdown fidelity
+
+- 📊 **Auto-repair of malformed GFM tables** (see [📊 Table repair](#-table-repair))
+- 🧠 **Tolerant LaTeX detection** for models that forget delimiters (see [🧠 Math rendering](#-math-rendering-katex))
+- 🖍️ **Syntax-highlighted code blocks** via highlight.js
+
+---
+
+## ⚙️ Preferences & settings
+
+Click the gear icon in the sidebar to open **Preferences**. Three settings:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Server URL** | Where to find Ollama. Use `http://host:port`. | `http://localhost:11434` |
+| **System prompt** | Prepended to every new chat as `system` role. | _(empty)_ |
+| **Temperature** | Sampling temperature, `0.0` (deterministic) → `2.0` (chaos). | `0.7` |
+
+There are also two checkboxes that toggle:
+
+- **Send system prompt on every turn** (default: ON) — so the persona sticks
+  across edits and regenerations.
+- **Clear conversation context after each message** (advanced) — useful for
+  benchmarks.
+
+Click **Test connection** inside Preferences to ping Ollama before saving.
+
+---
+
+## 🧠 Math rendering (KaTeX)
+
+Local chat models are wildly inconsistent about LaTeX. Some wrap every
+formula in `$...$`. Some wrap display equations in `$$...$$`. Some — like
+Qwen 2.5 Coder — drop the delimiters entirely, or wrap a multi-line
+derivation in plain `[ ... ]` brackets. Nocta handles all three:
+
+### What the preprocessor catches
+
+| Input shape | What Nocta does |
+|-------------|-----------------|
+| `$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$` | Leaves it alone — already inline math |
+| `$$ \begin{aligned} ... \end{aligned} $$` | Leaves it alone — already block math |
+| `[ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a} ]` | Rewrites the outer brackets to `$$ ... $$` |
+| `of the form ( ax^2 + bx + c = 0 )` | Rewrites the parenthetical to `$ax^2 + bx + c = 0$` |
+| A bare line `x^2 + 2x + 1 = 0` | Wraps in `$...$` automatically |
+| A short line `b^2 - 4ac` or `a_n + 1` | Wraps in `$...$` automatically |
+
+### How the detection works
+
+There are four passes, in order, each idempotent:
+
+1. **Multi-line `[ ... ]` unwrap** — if a block is *just* square brackets
+   surrounding TeX, convert to `$$ ... $$`.
+2. **Paren-wrap** — `( LaTeX )` segments that read as math get the inner
+   part rewrapped to `$...$`.
+3. **Bare TeX line wrap** — any line containing `\cmd` primitives or TeX
+   symbols (`\frac`, `\sqrt`, `\sum`, `\pi`, Greek letters, etc.) with no
+   existing delimiter gets wrapped in `$...$`. Markdown structure lines
+   (headings, lists, tables) are explicitly skipped so we don't accidentally
+   math-ify a bullet.
+4. **Implicit equation pass** — short lines (`<60` chars) that have implicit
+   math (`x^2`, `a_n`) **and** match a tight character class get wrapped.
+
+### Why a retry loop?
+
+KaTeX is loaded with `defer`, which means it may not be ready the moment
+the first response lands. `renderFinalMarkdown` retries `renderMathInElement`
+every 80 ms (capped) until KaTeX is present, so the first render of a cold
+page still gets math.
+
+### Customisation
+
+If the heuristic ever wraps something it shouldn't, edit the regexes at
+the top of `wrapBareLatex` inside the file. They're deliberately short and
+read like English.
+
+---
+
+## 📊 Table repair
+
+Smaller open-weight models often emit GFM tables with **ragged rows** —
+the second row (the `|---|---|` separator) doesn't match the column count
+of the data rows, or the data rows are shorter than the header. Most
+Markdown engines (and KaTeX's auto-render) silently drop or corrupt these
+tables.
+
+Nocta's `preprocessMarkdown` runs a two-pass repair **before** the text
+hits `marked.parse()`:
+
+1. **Separator normalisation** — every `|---|---|` line is rewritten to
+   exactly N dashes where N matches the header column count.
+2. **Row padding** — short data rows are padded with empty cells so every
+   row lines up.
+
+This makes a hallucinated table like:
+
+```text
+| Name | Score | Notes |
+| --- | --- | ---
+apple | 9 | tasty
+```
+
+…still render as a 3-column table rather than a misaligned mess.
+
+---
+
+## 🚀 Performance strategy
+
+Nocta is a single 100 KB HTML file but the *runtime* has a lot going on
+(markdown pipeline, KaTeX, highlight.js, two CDNs of fonts). The first
+paint is fast because:
+
+- 🎨 **System fonts first** — no FOIT, no font swap, no invisible text.
+  Web fonts are loaded non-blocking.
+- 🪶 **Deferred third-party scripts** — `marked`, `highlight.js`, and
+  KaTeX's auto-render extension use `defer` or the `media="print" onload`
+  swap pattern so they never block parsing.
+- 🦴 **Skeleton UI** — the chrome paints immediately; sidebar/data fill in
+  after scripts hydrate.
+- 🚰 **No re-renders during streaming** — `appendStreamingText` writes to
+  a single text node. No DOM thrash, no `innerHTML` per token.
+- 🧠 **`preprocessMarkdown` is O(n)** — table repair and LaTeX detection
+  run once over the completed text, not per chunk.
+
+The end result: time-to-first-byte for the page itself is dominated by
+your disk, not by anything we ship.
+
+---
+
+## ⌨️ Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| <kbd>Enter</kbd> | Send message |
+| <kbd>Shift</kbd> + <kbd>Enter</kbd> | New line in input |
+| <kbd>Esc</kbd> | Close open modal / stop generating |
+| <kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> | Focus the chat search box |
+
+---
+
+## 💾 Where your data lives
+
+Everything is in your browser's `localStorage`:
+
+| Key | Contents |
+|-----|----------|
+| `nocta_state_v1` | All chats, the active chat id, the model picker state, the sidebar collapsed state |
+| `nocta_settings_v1` | Server URL, system prompt, temperature, theme |
+
+Nothing leaves your browser unless you explicitly click **Export current
+chat**. No analytics. No telemetry. No calls home.
+
+To wipe everything: clear site data from your browser's DevTools, or use
+the **Clear all chats** button in the sidebar footer.
+
+---
+
+## 🛟 Troubleshooting
+
+### "Test connection" fails but Ollama is running
+
+1. **Bind address** — make sure Ollama is listening on `0.0.0.0`, not just
+   `127.0.0.1`. See [🌐 Use it from any device on your LAN](#-use-it-from-any-device-on-your-lan).
+2. **CORS** — Ollama allows any origin by default. If you've set
+   `OLLAMA_ORIGINS`, add the page's URL to the allow-list.
+3. **Firewall** — see the firewall note above for macOS.
+4. **Mixed content** — if the page is served over `https://`, Ollama must
+   be reachable over `https://` too. Easiest fix: open the HTML file
+   directly (`file://`) or serve it over plain HTTP.
+
+### Math shows as raw text
+
+- Confirm the response has actually **finished streaming** — during a
+  stream, plain text is shown by design (because KaTeX can't render a
+  half-delimited formula).
+- Open DevTools console. If you see any KaTeX or `renderMathInElement`
+  errors, please open an issue with the model name and a paste of the
+  raw response.
+
+### Tables look broken or have empty columns
+
+- The automatic repair only pads **short rows to the column count of the
+  header**. If the model emits a row that is *longer* than the header,
+  the extras get dropped. This is a conservative choice — please file an
+  issue with the offending output and we'll widen the heuristic.
+
+### Page feels slow on first load
+
+- The first load pays the full CDN cost for fonts, marked, KaTeX, and
+  highlight.js. Subsequent loads hit the browser cache. If you need it
+  fully offline, vendor those four scripts into a sibling `vendor/`
+  directory and swap the `<script src>` tags inside `ollama-chat.html`.
+
+### Editing a user message regenerates the assistant reply but loses context
+
+- This is by design — edit-and-resend **truncates the chat at the
+  edited message** so the model gets a clean slate from that point on.
+  If you want to keep earlier context, just send a follow-up instead of
+  editing.
+
+---
+
+## 🏗️ Architecture notes
+
+The whole app is one HTML file. Inside the `<script>` tag, the runtime is
+structured as:
+
+```
+state         // in-memory + localStorage-backed chat state
+settings      // in-memory + localStorage-backed preferences
+ollamaBase()  // single source of truth for the server URL
+preprocessMarkdown(src)  // table repair + LaTeX detection passes
+wrapBareLatex(src)       // tolerant LaTeX preprocessor (4 passes)
+appendStreamingText(b, t) // append-only text node during streams
+renderFinalMarkdown(b, t)// full marked -> KaTeX -> hljs pipeline
+paintStreamingStats(m, …) // tokens/sec + elapsed UI
+editAndResend(msgEl)      // edit & resend user messages
+```
+
+- **No framework.** Vanilla JS by design — the whole file is ~2,300 lines
+  and is readable top-to-bottom.
+- **One paint pipeline.** Streaming never re-parses markdown. Final render
+  happens exactly once, when the stream ends.
+- **Defensive preprocessor.** Both tables and LaTeX get normalised *before*
+  the markdown engine sees them.
+
+---
+
+## 🛣️ Roadmap
+
+- [ ] Per-model parameter overrides (top_p, top_k, repeat_penalty)
+- [ ] Streaming cancel that visibly un-disables the input
+- [ ] Pin a specific message and branch the chat from it
+- [ ] Image / vision model support (Ollama `/api/chat` multimodal)
+- [ ] PWA manifest so it installs to the home screen on iOS/Android
+- [ ] Optional backend proxy to bypass CORS for the truly paranoid
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs welcome. The bar to merge a PR is just:
+
+1. The code still fits in one file (or, if you're splitting it up, has a
+   reason and a one-line explanation in the PR body).
+2. The README is updated for any user-visible change.
+3. Keep the zero-build promise — don't add a package.json unless we're
+   really ready to commit to that.
+
+---
+
+## 📄 License
+
+[MIT](./LICENSE) — do whatever you want, just keep the copyright.
+
+---
+
+## 🙏 Credits
+
+Crafted by **Bikash Talukder**.
+
+Built on the shoulders of:
+
+- [Ollama](https://ollama.com) — for making local LLM inference trivially easy
+- [marked](https://marked.js.org/) — the Markdown parser
+- [KaTeX](https://katex.org/) — fast math typesetting
+- [highlight.js](https://highlightjs.org/) — syntax highlighting
+
+If you find this useful, drop a ⭐ on the repo — it helps more than you'd
+think.

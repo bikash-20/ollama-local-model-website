@@ -1,0 +1,14 @@
+# Editor / IDE
+.puku/
+.vscode/
+.idea/
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Node (kept here for future expansion; project is currently zero-dep)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
