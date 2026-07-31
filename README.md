@@ -24,9 +24,6 @@ tables get auto-repaired. Formulas that the model forgot to wrap in
 the whole page on every token. The whole thing is small enough to fit on a
 USB stick.
 
-> Screenshots will live here once the author adds them — see the
-> `docs/` folder once it is populated.
-
 [![Made with vanilla JS](https://img.shields.io/badge/Made%20with-vanilla%20JS-f7df1e?logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 [![No build step](https://img.shields.io/badge/Build-none-success)](#quick-start)
 [![No backend](https://img.shields.io/badge/Backend-none-success)](#quick-start)
