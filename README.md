@@ -7,6 +7,7 @@
 > 3. In Nocta's sidebar, pick the model and start chatting.
 >
 > The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the three lines above didn't work for you.
+<img width="1280" height="808" alt="image" src="https://github.com/user-attachments/assets/b876fc4e-2d2e-4b20-9a69-dcd78b4afeef" />
 
 ---
 
