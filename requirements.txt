@@ -16,6 +16,13 @@ python-multipart>=0.0.9
 # --- Config loader ----------------------------------------------------------
 python-dotenv>=1.0,<2.0
 
+# --- TLS / CA bundle --------------------------------------------------------
+# Required so urllib can verify huggingface.co (Piper voice download) on
+# macOS, where Python's ssl module can't find a CA bundle on its own.
+# Also pulled in transitively by faster-whisper/piper but we pin it here so
+# the install is self-documenting and survives a future dependency swap.
+certifi>=2023.5.7
+
 # --- Speech-to-text (faster-whisper, CTranslate2-backed) --------------------
 faster-whisper>=1.0.0
 

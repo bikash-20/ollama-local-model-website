@@ -243,6 +243,75 @@ def _stt_app() -> FastAPI:
 # ─────────────────────────────────────────────────────────────────────────────
 # /speak — text to speech via piper
 # ─────────────────────────────────────────────────────────────────────────────
+def _ssl_context():
+    """
+    Build an SSL context that can actually verify huggingface.co.
+
+    On macOS (and some Linux distros), Python's bundled `ssl` can't find a CA
+    bundle, so `urllib.request.urlretrieve` raises
+        [SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate.
+    We try (in order):
+      1. `certifi.where()`        — bundled Mozilla CA bundle (preferred)
+      2. macOS system keychain via `truststore` (PEP 543) — best when present
+      3. Default ssl.create_default_context() — works on Linux + Homebrew py
+      4. An UNVERIFIED context + loud warning — last-resort fallback so the
+         user can still get TTS working without a working CA store.
+    Returns (ctx, insecure_fallback: bool).
+    """
+    import ssl as _ssl
+    # 1. certifi — almost always present because faster-whisper / piper pull it in
+    try:
+        import certifi
+        ctx = _ssl.create_default_context(cafile=certifi.where())
+        return ctx, False
+    except ImportError:
+        pass
+    # 2. truststore — uses the OS keychain (PEP 543)
+    try:
+        import truststore  # type: ignore
+        ctx = truststore.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+        return ctx, False
+    except ImportError:
+        pass
+    # 3. Default — works on most Linux + Homebrew Python
+    try:
+        ctx = _ssl.create_default_context()
+        return ctx, False
+    except Exception:
+        pass
+    # 4. Unverified fallback. We log loudly so the user knows TLS is not
+    #    actually authenticated. Still better than crashing.
+    log.warning(
+        "no CA bundle found (install `certifi`); falling back to UNVERIFIED TLS. "
+        "Downloads will work but cannot be authenticated."
+    )
+    ctx = _ssl._create_unverified_context()  # noqa: SLF001 — intentional fallback
+    return ctx, True
+
+
+def _download(url: str, dest: Path, ctx) -> None:
+    """Stream `url` to `dest` with progress logging. Overwrites atomically."""
+    import urllib.request
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    req = urllib.request.Request(url, headers={"User-Agent": "nocta-voice-server/1.0"})
+    log.info("downloading %s -> %s", url, dest.name)
+    with urllib.request.urlopen(req, context=ctx, timeout=60) as resp, \
+         open(tmp, "wb") as out:
+        total = int(resp.headers.get("Content-Length") or 0)
+        read = 0
+        chunk = 64 * 1024
+        while True:
+            buf = resp.read(chunk)
+            if not buf:
+                break
+            out.write(buf)
+            read += len(buf)
+            if total and read // (chunk * 10) != (read - len(buf)) // (chunk * 10):
+                pct = read * 100 // total
+                log.info("  %s: %d%% (%d/%d bytes)", dest.name, pct, read, total)
+    tmp.replace(dest)
+
+
 def _ensure_piper_voice():
     """Download a Piper voice if it isn't on disk yet."""
     PIPER_VOICES_DIR.mkdir(parents=True, exist_ok=True)
@@ -251,27 +320,49 @@ def _ensure_piper_voice():
     if onnx_path.exists() and json_path.exists():
         return onnx_path, json_path
 
-    base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/{PIPER_VOICE.split('-',1)[-1] if '-' in PIPER_VOICE else 'low'}/{PIPER_VOICE}"
-    # The exact path under rhasspy/piper-voices is:
-    #   en/en_US/<voice>/<quality>/<PIPER_VOICE>.onnx[.json]
-    # We let users override the dir via PIPER_VOICE_URL if the convention moves.
-    # The default below mirrors the file layout shipped with piper's release zip.
-    url_root = os.environ.get("PIPER_VOICE_URL")
-    if not url_root:
-        # Heuristic: most en_US-low voices live under en/en_US/amy/low/en_US-amy-low.onnx
-        # We try a couple of common subpaths before giving up.
-        candidates = [
-            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/{PIPER_VOICE.split('en_US-')[-1].split('-', 1)[0]}/{PIPER_VOICE.split('-')[-1]}/{PIPER_VOICE}",
-            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/{PIPER_VOICE.split('en_US-')[-1].split('-', 1)[0]}/{PIPER_VOICE}",
-        ]
+    # Allow users to override the URLs entirely (e.g. for self-hosted mirrors).
+    # PIPER_VOICE_URL is the base prefix WITHOUT the .onnx / .onnx.json suffix.
+    base_override = os.environ.get("PIPER_VOICE_URL", "").strip()
+
+    # Mirror setup.sh's URL convention:
+    #   en/en_US/<name_short>/<quality>/<name>
+    # e.g. en_US-amy-medium -> en/en_US/amy/medium/en_US-amy-medium
+    # We split the voice name into a "short" part (amy) and a "quality"
+    # part (medium/low). Fallback candidates are tried in order.
+    if base_override:
+        candidates = [base_override.rstrip("/")]
     else:
-        candidates = [url_root]
+        # The HF layout is `en/en_US/<short>/<quality>/<name>`; quality is
+        # always the LAST dash-segment and short is everything after `en_US-`.
+        parts = PIPER_VOICE.split("-")
+        if len(parts) >= 3 and parts[0] == "en" and parts[1] == "US":
+            quality = parts[-1]
+            short = "-".join(parts[2:-1])
+            primary = (
+                f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+                f"en/en_US/{short}/{quality}/{PIPER_VOICE}"
+            )
+        else:
+            # Best-effort for voices that don't follow the en_US-<name>-<q> pattern.
+            quality = parts[-1] if len(parts) >= 2 else "medium"
+            short = parts[1] if len(parts) >= 3 else PIPER_VOICE
+            primary = (
+                f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+                f"en/en_US/{short}/{quality}/{PIPER_VOICE}"
+            )
+        candidates = [
+            primary,
+            # Fallback for older layouts that omit the quality subdir.
+            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+            f"en/en_US/{PIPER_VOICE.split('en_US-')[-1].split('-', 1)[0]}/{PIPER_VOICE}",
+        ]
 
     try:
-        import urllib.request
+        import urllib.request  # noqa: F401  (just to fail fast on exotic envs)
     except ImportError:
         raise HTTPException(500, "piper voice missing and urllib unavailable; restore the file manually")
 
+    ctx, insecure = _ssl_context()
     last_err = None
     for base in candidates:
         try:
@@ -280,17 +371,33 @@ def _ensure_piper_voice():
                 if target.exists():
                     continue
                 url = f"{base}.{fname}"
-                log.info("downloading %s", url)
-                urllib.request.urlretrieve(url, target)
+                _download(url, target, ctx)
+            # Sanity check — refuse to proceed if files look tiny / empty.
+            if onnx_path.stat().st_size < 1024:
+                raise RuntimeError(f"downloaded {onnx_path.name} is suspiciously small")
+            if json_path.stat().st_size < 32:
+                raise RuntimeError(f"downloaded {json_path.name} is suspiciously small")
             return onnx_path, json_path
         except Exception as e:
             last_err = e
             log.warning("voice download attempt failed (%s)", e)
-    raise HTTPException(
-        500,
-        f"could not download piper voice {PIPER_VOICE}: {last_err}. "
-        "Set PIPER_VOICE_URL to the directory containing the .onnx and .onnx.json files."
+            # Clean up partial files so the next attempt starts fresh.
+            for f in (onnx_path, json_path):
+                try:
+                    if f.exists() and f.stat().st_size < 1024:
+                        f.unlink()
+                except OSError:
+                    pass
+
+    hint = (
+        "could not download piper voice. "
+        "Fixes: (1) install `certifi` in your venv (`pip install certifi`), "
+        "(2) run `./setup.sh` which downloads the voice ahead of time, or "
+        "(3) set PIPER_VOICE_URL to a directory containing the .onnx and "
+        ".onnx.json files."
     )
+    log.error("%s last_err=%s insecure=%s", hint, last_err, insecure)
+    raise HTTPException(500, f"{hint} (last error: {last_err})")
 
 
 def _load_piper():
@@ -324,7 +431,18 @@ def _tts_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"ok": True, "piper_loaded": _piper._model is not None}
+        onnx = PIPER_VOICES_DIR / f"{PIPER_VOICE}.onnx"
+        cfg = PIPER_VOICES_DIR / f"{PIPER_VOICE}.onnx.json"
+        return {
+            "ok": True,
+            "piper_loaded": _piper._model is not None,
+            "voice": PIPER_VOICE,
+            "voice_files_present": onnx.exists() and cfg.exists(),
+            "voice_files": {
+                "onnx": str(onnx),
+                "json": str(cfg),
+            },
+        }
 
     @app.post("/speak")
     async def speak(request: Request):
@@ -353,11 +471,33 @@ def _tts_app() -> FastAPI:
                 return buf.getvalue()
 
             wav_bytes = await asyncio.to_thread(synth)
+            if not wav_bytes or len(wav_bytes) < 64:
+                # Defensive — if piper produced nothing useful, fail loudly
+                # instead of returning an empty body that the browser can't play.
+                raise RuntimeError(f"piper produced empty wav ({len(wav_bytes)} bytes)")
             return Response(content=wav_bytes, media_type="audio/wav")
         except HTTPException:
             raise
+        except FileNotFoundError as e:
+            # Piper model files went missing between health check and speak —
+            # give the user an actionable message instead of a stack trace.
+            log.error("piper voice file missing: %s", e)
+            raise HTTPException(
+                503,
+                f"piper voice '{PIPER_VOICE}' not found in {PIPER_VOICES_DIR}. "
+                "Re-run `./setup.sh` or download it manually, then retry."
+            )
         except Exception as e:
             log.exception("synthesis failed")
+            err = str(e)
+            if "CERTIFICATE_VERIFY_FAILED" in err or "ssl" in err.lower():
+                raise HTTPException(
+                    503,
+                    "TLS verification failed while downloading Piper voice. "
+                    "Install `certifi` in your venv (`pip install certifi`) and "
+                    "restart the server, or place the .onnx/.onnx.json files in "
+                    f"{PIPER_VOICES_DIR} manually."
+                )
             raise HTTPException(500, f"synthesis failed: {e}")
 
     return app
