@@ -392,69 +392,112 @@ There are also two checkboxes that toggle:
 
 Click **Test connection** inside Preferences to ping Ollama before
 saving.
-
 ---
 
 ## Voice input and output (local)
 
 Nocta ships with an optional **fully local voice layer**: tap a mic icon
-to dictate, and toggle a speaker icon to have the assistant's reply read
-back to you. The speech-to-text runs on [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-and the text-to-speech runs on [Piper](https://github.com/rhasspy/piper).
-Nothing leaves your machine — both models run on the CPU and download
-on first use.
+to dictate, and toggle a speaker icon to have the assistant's reply
+read back to you. Speech-to-text runs on
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) and
+text-to-speech runs on [Piper](https://github.com/rhasspy/piper).
+Nothing leaves your machine — both models run on CPU and download on
+first use.
 
 The voice UI only appears once the endpoints are configured, so the
 chat app behaves identically to before if you don't set this up.
 
-### 1. Install the dependencies (one-time)
+### Prerequisites
+
+- **Python 3.9 or newer** (`python3 --version`). The setup script
+  refuses to run on anything older.
+- **Ollama** running locally on `http://localhost:11434` (see the
+  [Quick start](#quick-start) above).
+- **A modern browser**: Chrome, Edge, Brave, or Arc. Firefox supports
+  the chat but its `MediaRecorder` support for opus is limited.
+- **~250MB of free disk** for the default Whisper base model + the
+  Piper Amy medium voice.
+
+### 1. One-command bootstrap (macOS / Linux)
 
 ```bash
-pip install fastapi 'uvicorn[standard]' python-multipart faster-whisper piper-tts
+git clone https://github.com/bikash-20/ollama-local-model-website.git
+cd ollama-local-model-website
+./setup.sh
 ```
 
-Piper will pull `onnxruntime` (~150MB) as part of its install. Whisper downloads its model on first request — the `base` model is
-**~150MB** by default (`tiny` is ~75MB if you want to save disk,
-`small` is ~500MB for higher accuracy).
+`setup.sh` is idempotent and does the following:
 
-For best webm/opus decoding from the browser, also install `ffmpeg`
-(`brew install ffmpeg` on macOS, `apt install ffmpeg` on Linux). The
-server falls back to the Python stdlib `wave` decoder if ffmpeg is
-absent, but you'll get errors on Chrome/Edge's webm-opus by default.
+1. Checks for Python 3.9+.
+2. Creates `./.venv/` and installs `requirements.txt` into it.
+3. Copies `.env.example` to `.env` (skipped if `.env` already exists).
+4. Downloads the default Piper voice (~60MB) into `./voices/`.
+5. Prints exactly which commands to run next.
 
-### 2. Start the voice server
+Re-running `./setup.sh` skips anything that's already done. Use
+`./setup.sh --reinstall` to wipe `.venv/` and start fresh, or
+`./setup.sh --skip-voice` if you want to install Python deps but fetch
+the voice file yourself.
+
+### 2. Manual bootstrap (any OS, including Windows)
 
 ```bash
-git clone https://github.com/bikash-20/ollama-local-model-website
+git clone https://github.com/bikash-20/ollama-local-model-website.git
 cd ollama-local-model-website
+
+# 1. Create a venv
+python -m venv .venv
+
+# 2. Activate it
+#    macOS / Linux:
+source .venv/bin/activate
+#    Windows (cmd):
+.venv\Scripts\activate.bat
+#    Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Configure (optional — defaults are fine for most people)
+copy .env.example .env       # Windows
+cp .env.example .env          # macOS / Linux
+
+# 5. Download a Piper voice into ./voices/
+#    (Windows: use Invoke-WebRequest or just download from
+#     https://huggingface.co/rhasspy/piper-voices in your browser.)
+mkdir voices
+curl -fL -o voices/en_US-amy-medium.onnx      https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx
+curl -fL -o voices/en_US-amy-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
+```
+
+### 3. Start the voice server
+
+In the same venv:
+
+```bash
 python voice_server.py
 ```
 
-This launches **two** FastAPI apps in one process:
+You'll see two FastAPI apps boot in one process:
 
-| Endpoint | Default | Purpose |
-|----------|---------|---------|
-| `POST http://localhost:5005/transcribe` | multipart `audio` field | Returns `{"text": "..."}` |
-| `POST http://localhost:5006/speak`      | JSON `{"text": "..."}`           | Returns `audio/wav` bytes |
+| Endpoint | Default port | Purpose |
+|---|---|---|
+| `POST /transcribe` | `5005` | multipart `audio` field in → `{"text": "..."}` out |
+| `POST /speak` | `5006` | JSON `{"text": "..."}` in → `audio/wav` bytes out |
 
 Both endpoints enable CORS for any origin, so Nocta can call them
-directly from `file://` or `http://localhost`. Override defaults with
-env vars: `STT_PORT`, `TTS_PORT`, `STT_HOST`, `TTS_HOST`,
-`WHISPER_MODEL` (`tiny|base|small|medium`), `PIPER_VOICE`.
+directly from `file://` or `http://localhost`.
 
-Disk footprint with defaults: **~210MB** total (150MB whisper base +
-~60MB piper en_US-amy-medium voice). Set `WHISPER_MODEL=tiny` and
-`PIPER_VOICE=en_US-amy-low` to drop back to ~135MB.
+Optional: install `ffmpeg` (`brew install ffmpeg` on macOS,
+`apt install ffmpeg` on Linux, `winget install ffmpeg` on Windows).
+The server falls back to the Python `wave` decoder if ffmpeg is
+absent, but Chrome/Edge's default webm-opus blobs need ffmpeg.
 
-### 3. Run things in this order
+### 4. Configure Nocta
 
-1. `ollama serve` (your existing Ollama daemon — unchanged)
-2. `python voice_server.py` (this repo)
-3. Open `index.html` in Chrome, Edge, or Brave
-
-### 4. Wire it into Nocta
-
-Open the **gear icon → Preferences** modal and fill in:
+Open `index.html` in Chrome/Edge/Brave, click the **gear icon →
+Preferences**, and fill in:
 
 - **Voice (STT) endpoint** — `http://localhost:5005/transcribe`
 - **Voice (TTS) endpoint** — `http://localhost:5006/speak`
@@ -463,35 +506,78 @@ Click **Save**. The mic and speaker icons appear in the input bar.
 
 ### 5. Using it
 
-- **Mic button**: click to start recording (red pulse + dot appear in the
-  input bar). Click again to stop, or just stop talking — the server
-  auto-stops after ~1.5s of silence. The audio blob is POSTed to your
-  STT endpoint, the transcript is dropped into the text input, and
-  `sendMessage()` runs through the existing pipeline so it shows up in
-  your conversation history like any typed message.
-- **Speaker button**: click once to enable read-aloud. After each
+- **Mic button** — click to start recording (a red pulse + dot appear
+  in the input bar). Click again to stop, or just stop talking — the
+  server auto-stops after ~1.5 s of silence (60 s hard cap). The audio
+  is POSTed to your STT endpoint, the transcript is dropped into the
+  text input, and `sendMessage()` runs through the existing pipeline
+  so it shows up in your conversation history like any typed message.
+- **Speaker button** — click once to enable read-aloud. After each
   assistant reply finishes streaming, the cleaned text is POSTed to
   your TTS endpoint and the returned `.wav` is autoplayed inline. The
   bubble it's playing from gets a soft cyan glow. Click again to mute.
-- **First autoplay**: most browsers require a user gesture before they
-  allow audio to play. The first click on the speaker toggle counts as
-  that gesture, so subsequent replies play automatically.
+- **First autoplay** — browsers require a user gesture before they
+  allow audio to play. The first click on the speaker toggle counts
+  as that gesture, so subsequent replies play automatically.
 
 Errors are reported through the same red error banner the rest of the
-app uses — no silent failures. Mic permission denied, the voice server
-being down, or transcription returning empty text all surface there.
+app uses — no silent failures. Mic permission denied, the voice
+server being down, or transcription returning empty text all surface
+there.
+
+### Configuration reference
+
+All settings live in `.env`. Anything you leave blank falls back to
+the defaults below:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `STT_HOST` | `127.0.0.1` | Set to `0.0.0.0` to accept from other LAN devices |
+| `STT_PORT` | `5005` | |
+| `TTS_HOST` | `127.0.0.1` | |
+| `TTS_PORT` | `5006` | |
+| `WHISPER_MODEL` | `base` | `tiny`/`base`/`small`/`medium`/`large-v3` |
+| `WHISPER_COMPUTE` | `int8` | `int8` (CPU), `float16` (GPU), `float32` |
+| `WHISPER_BEAM` | `1` | Higher = slower but more accurate |
+| `PIPER_VOICE` | `en_US-amy-medium` | Must match a file in `VOICES_DIR` |
+| `VOICES_DIR` | `./voices` | Relative paths are resolved from the project root |
+| `PIPER_VOICE_URL` | (HuggingFace default) | Override if you mirror the voice elsewhere |
+
+Disk footprint with defaults: **~210MB** total (150MB Whisper base +
+60MB Piper en_US-amy-medium). Set `WHISPER_MODEL=tiny` and
+`PIPER_VOICE=en_US-amy-low` to drop back to ~135MB.
 
 ### Troubleshooting
 
 - **"Couldn't reach the voice server"** — make sure `voice_server.py`
-  is running and the URL in Preferences matches the port you actually
-  bound (`STT_PORT`/`TTS_PORT`).
+  is running in a terminal and the URL in Preferences matches the
+  port you actually bound (`STT_PORT`/`TTS_PORT`). Try
+  `curl http://localhost:5005/healthz` from another terminal.
+- **"Address already in use" on startup** — another process is using
+  port 5005 or 5006. Either stop it (`lsof -ti:5005 | xargs kill` on
+  macOS/Linux) or change the port in `.env` and update the URLs in
+  Nocta's Preferences to match.
 - **Autoplay blocked** — click the speaker toggle once to grant the
   gesture, then replies will autoplay.
-- **"No speech detected"** — speak louder, or switch `WHISPER_MODEL=small`
-  for noticeably better accuracy at the cost of another ~350MB.
-- **ffmpeg missing** — install it (`brew install ffmpeg`) so Chrome's
-  webm-opus blobs decode correctly.
+- **"No speech detected"** — speak louder / move closer to the mic,
+  or upgrade `WHISPER_MODEL=small` for noticeably better accuracy at
+  the cost of another ~350MB.
+- **ffmpeg missing / webm decode errors** — install ffmpeg (see step
+  3). Without it the server can't decode Chrome/Edge's default
+  webm-opus blobs.
+- **Mic permission denied** — in Chrome, click the lock icon in the
+  address bar and grant Microphone permission for `file://` or
+  `http://localhost:*`. Then reload the page.
+- **CORS errors in the browser console** — the server already allows
+  any origin (`*`), so CORS errors almost always mean the URL is
+  wrong or the server isn't actually running. Check the terminal
+  where `voice_server.py` is running.
+- **On Windows: `python` not found** — install Python from
+  https://python.org and tick "Add Python to PATH" in the installer,
+  or use the `py` launcher instead.
+
+---
+
 
 ---
 

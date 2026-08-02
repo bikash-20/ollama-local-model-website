@@ -1,0 +1,24 @@
+# Voice server dependencies for voice_server.py.
+# Install with:  pip install -r requirements.txt
+#
+# Tested with Python 3.9 - 3.12 on macOS (Apple Silicon and Intel) and
+# Linux (Ubuntu 22.04). CPU-only is fine; faster-whisper will use CUDA
+# automatically if torch is installed with CUDA support.
+#
+# Minimum versions chosen to match what the code uses at import time
+# (e.g. python-multipart for FastAPI's File() form parsing).
+
+# --- Web framework ----------------------------------------------------------
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+python-multipart>=0.0.9
+
+# --- Config loader ----------------------------------------------------------
+python-dotenv>=1.0,<2.0
+
+# --- Speech-to-text (faster-whisper, CTranslate2-backed) --------------------
+faster-whisper>=1.0.0
+
+# --- Text-to-speech (Piper, ONNX Runtime-backed) ---------------------------
+# onnxruntime (~150MB) is pulled in automatically as a Piper dependency.
+piper-tts>=1.2.0

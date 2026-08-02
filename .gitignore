@@ -12,3 +12,30 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice server (added for open-source portability)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Downloaded Piper voice models (~60MB each). The setup script fetches these.
+voices/
+*.onnx
+*.onnx.json
+
+# Whisper model cache (~75MB-3GB per model). Set by faster-whisper/HuggingFace.
+.cache/
+hf_cache/
+
+# Python virtualenvs created by setup.sh
+.venv/
+venv/
+env/
+
+# Local environment configuration (real secrets / overrides). Keep .env.example.
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/

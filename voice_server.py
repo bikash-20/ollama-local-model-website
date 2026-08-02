@@ -11,12 +11,19 @@ keeps CORS, restarts, and failure modes isolated. Both can also be combined
 behind a single uvicorn process by importing both routers.
 
 Dependencies (CPU is fine; GPU optional):
-    pip install fastapi 'uvicorn[standard]' python-multipart faster-whisper
-    pip install piper-tts          # TTS — pulls in onnxruntime (~150MB)
+    pip install -r requirements.txt
+    # Or manually:
+    #   pip install fastapi 'uvicorn[standard]' python-multipart python-dotenv
+    #   pip install faster-whisper piper-tts
+
+Configuration:
+    Copy .env.example to .env and edit as needed. Anything you leave
+    blank falls back to the defaults below. The script is fully
+    self-contained — no absolute paths, no machine-specific config.
 
 Model downloads happen on first request and are cached under:
     faster-whisper: ~/.cache/huggingface/hub
-    piper:         ~/piper-voices/  (defaults to $HOME/piper-voices)
+    piper:         ./voices/  (relative to this script's directory)
 
 Disk footprint (defaults below): ~150MB whisper base + ~60MB piper voice
 ≈ 210MB total. Set WHISPER_MODEL=tiny + PIPER_VOICE=en_US-amy-low for ~135MB.
@@ -26,6 +33,8 @@ Run:
 Then in Nocta -> Preferences -> Voice, set:
     STT: http://localhost:5005/transcribe
     TTS: http://localhost:5006/speak
+
+For a one-command bootstrap on macOS/Linux, run ./setup.sh instead.
 """
 from __future__ import annotations
 
@@ -41,6 +50,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
+# Resolve paths relative to THIS script's directory (not the cwd), so the
+# server works the same way no matter where you invoke it from.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Load .env from the project root if present. Missing file is fine — all
+# settings have defaults. Existing real env vars always win over .env.
+load_dotenv(_SCRIPT_DIR / ".env", override=False)
+
 from fastapi import FastAPI, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -48,7 +67,7 @@ from fastapi.responses import JSONResponse, Response
 log = logging.getLogger("voice_server")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Configuration via environment variables (all optional)
+# Configuration via environment variables / .env (all optional)
 # ─────────────────────────────────────────────────────────────────────────────
 STT_HOST = os.environ.get("STT_HOST", "127.0.0.1")
 STT_PORT = int(os.environ.get("STT_PORT", "5005"))
@@ -64,10 +83,17 @@ WHISPER_BEAM = int(os.environ.get("WHISPER_BEAM", "1"))
 # Piper voice: ~60MB en_US voice, auto-downloaded on first run if absent.
 # Override with PIPER_VOICE=en_US-amy-low if you want the smaller low-quality voice.
 PIPER_VOICE = os.environ.get("PIPER_VOICE", "en_US-amy-medium")
-# Default voice directory is $HOME/piper-voices (e.g. ~/piper-voices/en_US-amy-medium.onnx).
-PIPER_VOICES_DIR = Path(
-    os.environ.get("PIPER_VOICES_DIR", str(Path.home() / "piper-voices"))
-).resolve()
+
+# Voice directory. Relative paths are resolved from the script directory
+# (so the project is self-contained and portable). Default is ./voices/.
+_raw_voices_dir = os.environ.get(
+    "VOICES_DIR",
+    os.environ.get("PIPER_VOICES_DIR", "./voices"),  # legacy alias
+)
+_voices_path = Path(_raw_voices_dir)
+if not _voices_path.is_absolute():
+    _voices_path = (_SCRIPT_DIR / _voices_path).resolve()
+PIPER_VOICES_DIR = _voices_path
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optional imports — kept lazy so the user can run STT-only or TTS-only.
