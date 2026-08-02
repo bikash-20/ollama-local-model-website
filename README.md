@@ -5,10 +5,18 @@
 > 1. Open **https://bikash-20.github.io/ollama-local-model-website/** in Chrome, Edge, or Brave.
 > 2. Install [Ollama](https://ollama.com/download) and pull a model: `ollama pull llama3.2`
 > 3. In Nocta's sidebar, pick the model and start chatting.
+> 4. Want to talk to it out loud instead of typing? See [Voice input and output](#voice-input-and-output-local) below.
 >
-> The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the three lines above didn't work for you.
+> The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the lines above didn't work for you.
+
 <img width="1280" height="808" alt="image" src="https://github.com/user-attachments/assets/1c673b22-8ce7-4463-a55c-0dc05d406498" />
 
+---
+
+## What's new
+
+-  **Local voice input and output.** Talk to your model and have it talk back — speech-to-text via faster-whisper, text-to-speech via Piper, both running entirely on your own machine. See [Voice input and output](#voice-input-and-output-local).
+-  **PWA install confirmed working on macOS** (Safari → File → Add to Dock) as well as Chrome/Edge/Brave on desktop, Android, and iOS. Nocta now runs as a real standalone app with its own icon and window — not just a browser tab.
 
 ---
 
@@ -33,6 +41,7 @@ USB stick.
 
 ## Table of contents
 
+- [What's new](#whats-new)
 - [What is Nocta?](#what-is-nocta)
 - [Quick start](#quick-start)
 - [Install and run Ollama](#install-and-run-ollama)
@@ -125,6 +134,15 @@ boots, then the sidebar appears with your model list pulled from
 That is the whole setup. No `npm install`, no Node version to manage, no
 service to bring up.
 
+> **Note on `file://` vs hosted HTTPS:** if you plan to use the
+> [voice features](#voice-input-and-output-local), open Nocta from the
+> local file (`file://...index.html`) or from `http://localhost`, not
+> from a hosted `https://` page. Browsers block HTTPS pages from calling
+> `http://localhost` endpoints for security reasons, so the mic and
+> speaker won't be able to reach your local voice server from the
+> GitHub Pages version. Plain text chat with Ollama works fine either
+> way — this restriction only affects voice.
+
 ---
 
 ## Install and run Ollama
@@ -149,6 +167,15 @@ ollama pull gemma2:9b            # strong general model
 The model list inside Nocta shows everything you have already pulled via
 `GET /api/tags`. Anything not installed yet is still listed as a
 suggestion in the catalog — click **Pull** to download it.
+
+> **A common startup snag:** if `ollama serve` fails with
+> `address already in use`, something is already holding port 11434 —
+> usually the Ollama desktop app running quietly in your menu bar, which
+> respawns the server the moment you kill it. Quit the Ollama app itself
+> (menu bar icon → Quit, or Activity Monitor → force quit) before trying
+> `ollama serve` again. To stop it from relaunching automatically next
+> time you log in, go to **System Settings → General → Login Items &
+> Extensions** and toggle Ollama off under "Allow in the Background."
 
 ---
 
@@ -226,6 +253,12 @@ Nocta is a Progressive Web App. The browser can install it onto your phone,
 tablet, laptop, or desktop so it opens in its own window with its own icon,
 no address bar, and works offline once it has loaded.
 
+> ✅ **Confirmed working on macOS** — installing via Safari's
+> **File → Add to Dock** produces a real standalone Nocta app in the
+> Dock and Applications folder, separate from the browser, with its own
+> icon and window. This has been tested end-to-end and works as
+> described below.
+
 ### Prerequisites
 
 PWA install needs a secure origin. That means either:
@@ -271,7 +304,11 @@ standalone mode with a status-bar tint that matches the app theme.
 
 The same flow as iOS works in Safari 17 and later: **File → Add to
 Dock**. Nocta will appear in the Dock and the Applications folder with
-its own window and icon.
+its own window and icon. This is the path that has been verified
+working — if Nocta doesn't show up as an installable option, make sure
+you're viewing the page over `https://` (the hosted GitHub Pages link)
+rather than a local `file://` path, since Safari needs the secure-origin
+requirement met the same as any other browser.
 
 ### After install
 
@@ -329,6 +366,15 @@ never heard of the family before.
 - Regenerate the last assistant response against the same prompt
 - Stop a generation mid-stream without freezing the UI
 
+### Voice (new)
+
+- Local speech-to-text via faster-whisper — click the mic, speak, and
+  your words appear as a message
+- Local text-to-speech via Piper — toggle the speaker icon and every
+  assistant reply is read back out loud
+- Nothing leaves your machine — both models run on CPU on your own
+  computer, no cloud APIs involved
+
 ### UI and theming
 
 - Dark and light mode toggle (persisted)
@@ -336,6 +382,7 @@ never heard of the family before.
 - Collapsible sidebar — keep only the chat on screen when you need room
 - Boot loader skeleton — the page paints fast, hydration happens after
 - Responsive typography that reads well from phone to ultrawide
+- Installable as a standalone PWA on macOS, Windows, Linux, Android, and iOS
 
 ### Persistence
 
@@ -375,23 +422,24 @@ to bottom):
 5. **Clear all chats**
 
 Click the **Preferences** row (the gear icon) to open the settings
-modal. There are three settings:
+modal. There are three core settings, plus two for voice:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Server URL | Where to find Ollama. Use `http://host:port`. | `http://localhost:11434` |
 | System prompt | Prepended to every new chat as the `system` role. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
-
-There are also two checkboxes that toggle:
-
-- **Send system prompt on every turn** (default: ON) — so the persona
-  sticks across edits and regenerations.
-- **Clear conversation context after each message** (advanced) — useful
-  for benchmarks.
+| Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |
+| Voice (TTS) endpoint | Where your local text-to-speech server lives. Leave blank to hide the speaker icon. | _(empty)_ |
 
 Click **Test connection** inside Preferences to ping Ollama before
 saving.
+
+> **Reminder:** Preferences are stored per browser origin. If you use
+> both the hosted `https://` link and a local `file://` copy, you'll
+> need to fill in Preferences (including the voice endpoints) separately
+> on each — they don't share storage.
+
 ---
 
 ## Voice input and output (local)
@@ -407,6 +455,26 @@ first use.
 The voice UI only appears once the endpoints are configured, so the
 chat app behaves identically to before if you don't set this up.
 
+### How it works, end to end
+
+```
+🎤 You click the mic and speak
+   ↓
+📝 Whisper (running locally) transcribes your voice into text
+   ↓
+🤖 That text is sent to Ollama, exactly as if you had typed it
+   ↓
+💬 Ollama streams back the full text reply
+   ↓
+🔊 Only once that reply is complete, Piper (also local) converts
+   it to speech and plays it back
+```
+
+The reply is always shown as text first and spoken second — Piper needs
+the complete sentence before it can turn it into audio, so there's a
+short, expected gap between the text finishing and the voice starting.
+This is the same order every voice assistant uses under the hood.
+
 ### Prerequisites
 
 - **Python 3.9 or newer** (`python3 --version`). The setup script
@@ -417,6 +485,10 @@ chat app behaves identically to before if you don't set this up.
   the chat but its `MediaRecorder` support for opus is limited.
 - **~250MB of free disk** for the default Whisper base model + the
   Piper Amy medium voice.
+- **`ffmpeg`** (recommended) — `brew install ffmpeg` on macOS,
+  `apt install ffmpeg` on Linux, `winget install ffmpeg` on Windows.
+  Chrome/Edge record audio as webm/opus, which needs ffmpeg to decode
+  reliably.
 
 ### 1. One-command bootstrap (macOS / Linux)
 
@@ -489,15 +561,12 @@ You'll see two FastAPI apps boot in one process:
 Both endpoints enable CORS for any origin, so Nocta can call them
 directly from `file://` or `http://localhost`.
 
-Optional: install `ffmpeg` (`brew install ffmpeg` on macOS,
-`apt install ffmpeg` on Linux, `winget install ffmpeg` on Windows).
-The server falls back to the Python `wave` decoder if ffmpeg is
-absent, but Chrome/Edge's default webm-opus blobs need ffmpeg.
-
 ### 4. Configure Nocta
 
-Open `index.html` in Chrome/Edge/Brave, click the **gear icon →
-Preferences**, and fill in:
+Open `index.html` in Chrome/Edge/Brave — **from the local file or
+`http://localhost`, not the hosted `https://` link** (see the note in
+[Quick start](#quick-start)) — click the **gear icon → Preferences**,
+and fill in:
 
 - **Voice (STT) endpoint** — `http://localhost:5005/transcribe`
 - **Voice (TTS) endpoint** — `http://localhost:5006/speak`
@@ -517,8 +586,8 @@ Click **Save**. The mic and speaker icons appear in the input bar.
   your TTS endpoint and the returned `.wav` is autoplayed inline. The
   bubble it's playing from gets a soft cyan glow. Click again to mute.
 - **First autoplay** — browsers require a user gesture before they
-  allow audio to play. The first click on the speaker toggle counts
-  as that gesture, so subsequent replies play automatically.
+  allow audio to play. The first click on the mic or speaker toggle
+  counts as that gesture, so subsequent replies play automatically.
 
 Errors are reported through the same red error banner the rest of the
 app uses — no silent failures. Mic permission denied, the voice
@@ -553,18 +622,39 @@ Disk footprint with defaults: **~210MB** total (150MB Whisper base +
   is running in a terminal and the URL in Preferences matches the
   port you actually bound (`STT_PORT`/`TTS_PORT`). Try
   `curl http://localhost:5005/healthz` from another terminal.
-- **"Address already in use" on startup** — another process is using
-  port 5005 or 5006. Either stop it (`lsof -ti:5005 | xargs kill` on
-  macOS/Linux) or change the port in `.env` and update the URLs in
-  Nocta's Preferences to match.
+- **"Address already in use" on startup** — another process (often a
+  previous `voice_server.py` that didn't fully exit) is using port
+  5005 or 5006. Find and stop it:
+  `lsof -i :5005` and `lsof -i :5006` to find the PID, then
+  `kill -9 <PID>`. Confirm both `lsof` commands return nothing before
+  starting the server again.
+- **TTS returns a 500 error, mentioning SSL / CERTIFICATE_VERIFY_FAILED**
+  — this is a known macOS + python.org Python issue: the interpreter
+  doesn't have its SSL certificates linked to the system trust store,
+  so the first-time voice download from Hugging Face fails. Fix it by
+  installing `certifi` and pointing `SSL_CERT_FILE` at it:
+  ```bash
+  /path/to/python3 -m pip install --upgrade certifi
+  export SSL_CERT_FILE=$(/path/to/python3 -c "import certifi; print(certifi.where())")
+  python voice_server.py
+  ```
+  Replace `/path/to/python3` with whatever `which python3` gives you
+  inside your venv. Once set for a terminal session, restart the
+  server and the voice files will download normally.
+- **Mic/speaker icons don't appear even after saving Preferences** —
+  Preferences are stored per browser **origin**. If you set them up
+  once on the hosted `https://` page and now you're testing from the
+  local `file://` copy (or vice versa), the browser treats these as
+  two completely separate storage buckets. Re-enter the STT/TTS URLs
+  on whichever version you're actually using.
 - **Autoplay blocked** — click the speaker toggle once to grant the
   gesture, then replies will autoplay.
 - **"No speech detected"** — speak louder / move closer to the mic,
   or upgrade `WHISPER_MODEL=small` for noticeably better accuracy at
   the cost of another ~350MB.
-- **ffmpeg missing / webm decode errors** — install ffmpeg (see step
-  3). Without it the server can't decode Chrome/Edge's default
-  webm-opus blobs.
+- **ffmpeg missing / webm decode errors** — install ffmpeg (see
+  Prerequisites above). Without it the server can't decode Chrome/
+  Edge's default webm-opus blobs.
 - **Mic permission denied** — in Chrome, click the lock icon in the
   address bar and grant Microphone permission for `file://` or
   `http://localhost:*`. Then reload the page.
@@ -575,9 +665,6 @@ Disk footprint with defaults: **~210MB** total (150MB Whisper base +
 - **On Windows: `python` not found** — install Python from
   https://python.org and tick "Add Python to PATH" in the installer,
   or use the `py` launcher instead.
-
----
-
 
 ---
 
@@ -700,10 +787,12 @@ Everything is in your browser's `localStorage`:
 | Key | Contents |
 |-----|----------|
 | `nocta_state_v1` | All chats, the active chat id, the model picker state, the sidebar collapsed state |
-| `nocta_settings_v1` | Server URL, system prompt, temperature, theme |
+| `nocta_settings_v1` | Server URL, system prompt, temperature, theme, voice endpoints |
 
 Nothing leaves your browser unless you explicitly click **Export current
-chat**. No analytics, no telemetry, no calls home.
+chat**, or use the voice feature (which sends audio/text only to the
+local voice server on your own machine — never to the internet).
+No analytics, no telemetry, no calls home.
 
 To wipe everything: clear site data from your browser's DevTools, or use
 the **Clear all chats** button in the sidebar footer.
@@ -753,6 +842,13 @@ This is by design — edit-and-resend truncates the chat at the edited
 message so the model gets a clean slate from that point on. If you want
 to keep earlier context, just send a follow-up instead of editing.
 
+### Voice-specific issues
+
+See the dedicated [Troubleshooting section](#troubleshooting-1) under
+Voice input and output — it covers SSL certificate errors, port
+conflicts, and per-origin Preferences storage separately, since those
+are the issues people actually hit in practice.
+
 ---
 
 ## Architecture notes
@@ -770,7 +866,15 @@ appendStreamingText(b,t)   // append-only text node during streams
 renderFinalMarkdown(b,t)  // full marked -> KaTeX -> hljs pipeline
 paintStreamingStats(m,...) // tokens/sec + elapsed UI
 editAndResend(msgEl)       // edit and resend user messages
+startVoiceRecording()      // mic capture -> STT endpoint -> sendMessage()
+voiceSpeakAssistant(t,b)   // finished reply -> TTS endpoint -> autoplay
 ```
+
+The voice layer (`voice_server.py`) is a separate, optional Python
+process — a small FastAPI app exposing `/transcribe` and `/speak`. It
+is intentionally decoupled from the HTML file: if it's not running, the
+mic/speaker icons simply don't appear, and everything else behaves
+exactly as it did before voice existed.
 
 - No framework. Vanilla JS by design — the whole file is around 2,300
   lines and is readable top to bottom.
@@ -787,8 +891,10 @@ editAndResend(msgEl)       // edit and resend user messages
 - Streaming cancel that visibly un-disables the input
 - Pin a specific message and branch the chat from it
 - Image and vision model support (Ollama `/api/chat` multimodal)
-- PWA manifest so it installs to the home screen on iOS and Android
-- Optional backend proxy to bypass CORS for the truly paranoid
+- Additional Piper voices selectable from Preferences, not just one
+  fixed default
+- Optional backend proxy to bypass CORS and the HTTPS/localhost
+  restriction for voice, for the truly paranoid
 
 ---
 
@@ -820,6 +926,8 @@ Built on the shoulders of:
 - [marked](https://marked.js.org/) — the Markdown parser
 - [KaTeX](https://katex.org/) — fast math typesetting
 - [highlight.js](https://highlightjs.org/) — syntax highlighting
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local speech-to-text
+- [Piper](https://github.com/rhasspy/piper) — local text-to-speech
 
 If you find this useful, dropping a star on the repo helps more than
 you would think.
