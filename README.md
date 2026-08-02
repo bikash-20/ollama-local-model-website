@@ -413,9 +413,9 @@ chat app behaves identically to before if you don't set this up.
 pip install fastapi 'uvicorn[standard]' python-multipart faster-whisper piper-tts
 ```
 
-Piper will pull `onnxruntime` (~150MB) as part of its install. Whisper
-downloads its model on first request — the `tiny` model is **~75MB**
-(`base` is ~150MB if you want higher accuracy).
+Piper will pull `onnxruntime` (~150MB) as part of its install. Whisper downloads its model on first request — the `base` model is
+**~150MB** by default (`tiny` is ~75MB if you want to save disk,
+`small` is ~500MB for higher accuracy).
 
 For best webm/opus decoding from the browser, also install `ffmpeg`
 (`brew install ffmpeg` on macOS, `apt install ffmpeg` on Linux). The
@@ -442,8 +442,9 @@ directly from `file://` or `http://localhost`. Override defaults with
 env vars: `STT_PORT`, `TTS_PORT`, `STT_HOST`, `TTS_HOST`,
 `WHISPER_MODEL` (`tiny|base|small|medium`), `PIPER_VOICE`.
 
-Disk footprint with defaults: **~135MB** total (75MB whisper tiny +
-~60MB piper en_US-amy-low voice).
+Disk footprint with defaults: **~210MB** total (150MB whisper base +
+~60MB piper en_US-amy-medium voice). Set `WHISPER_MODEL=tiny` and
+`PIPER_VOICE=en_US-amy-low` to drop back to ~135MB.
 
 ### 3. Run things in this order
 
@@ -487,8 +488,8 @@ being down, or transcription returning empty text all surface there.
   bound (`STT_PORT`/`TTS_PORT`).
 - **Autoplay blocked** — click the speaker toggle once to grant the
   gesture, then replies will autoplay.
-- **"No speech detected"** — speak louder, or switch `WHISPER_MODEL=base`
-  for slightly better accuracy at the cost of another ~75MB.
+- **"No speech detected"** — speak louder, or switch `WHISPER_MODEL=small`
+  for noticeably better accuracy at the cost of another ~350MB.
 - **ffmpeg missing** — install it (`brew install ffmpeg`) so Chrome's
   webm-opus blobs decode correctly.
 

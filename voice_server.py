@@ -16,10 +16,10 @@ Dependencies (CPU is fine; GPU optional):
 
 Model downloads happen on first request and are cached under:
     faster-whisper: ~/.cache/huggingface/hub
-    piper:         ./piper_voices/   (we auto-download a small voice there)
+    piper:         ~/piper-voices/  (defaults to $HOME/piper-voices)
 
-Disk footprint (defaults below): ~75MB whisper tiny + ~60MB piper voice = ~135MB
-total, well under the 200MB target.
+Disk footprint (defaults below): ~150MB whisper base + ~60MB piper voice
+≈ 210MB total. Set WHISPER_MODEL=tiny + PIPER_VOICE=en_US-amy-low for ~135MB.
 
 Run:
     python voice_server.py
@@ -56,14 +56,18 @@ TTS_HOST = os.environ.get("TTS_HOST", "127.0.0.1")
 TTS_PORT = int(os.environ.get("TTS_PORT", "5006"))
 
 # Whisper model size: tiny (~75MB), base (~150MB), small (~500MB).
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "tiny")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 # Whisper compute type: int8 (CPU, smallest), float16 (GPU), float32 (CPU fallback).
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 WHISPER_BEAM = int(os.environ.get("WHISPER_BEAM", "1"))
 
-# Piper voice: small (~60MB) en_US voice. Auto-downloaded on first run.
-PIPER_VOICE = os.environ.get("PIPER_VOICE", "en_US-amy-low")
-PIPER_VOICES_DIR = Path(os.environ.get("PIPER_VOICES_DIR", "./piper_voices")).resolve()
+# Piper voice: ~60MB en_US voice, auto-downloaded on first run if absent.
+# Override with PIPER_VOICE=en_US-amy-low if you want the smaller low-quality voice.
+PIPER_VOICE = os.environ.get("PIPER_VOICE", "en_US-amy-medium")
+# Default voice directory is $HOME/piper-voices (e.g. ~/piper-voices/en_US-amy-medium.onnx).
+PIPER_VOICES_DIR = Path(
+    os.environ.get("PIPER_VOICES_DIR", str(Path.home() / "piper-voices"))
+).resolve()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optional imports — kept lazy so the user can run STT-only or TTS-only.
