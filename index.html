@@ -2513,6 +2513,7 @@ let voiceRecordingStart = 0;
 let voiceSilenceTimer = null;
 let voiceLastBubble = null;
 let voiceAudio = null;
+let voicePrimed = false;
 const VOICE_SILENCE_MS = 1500;   // auto-stop after ~1.5s of quiet
 const VOICE_MAX_MS = 60000;      // hard cap: 60s of audio
 const VOICE_MIN_MS = 250;        // ignore accidental clicks
@@ -2591,6 +2592,27 @@ async function startVoiceRecording(){
   el.recDot.classList.add('show');
   setVoiceStatus('recording…');
   voiceMediaRecorder.start(250);
+
+  // Auto-enable read-aloud for this session if a TTS endpoint is configured,
+  // and prime a silent <audio> element so the upcoming reply can play
+  // without the browser blocking it as autoplay.
+  try{
+    if(settings.ttsUrl && !settings.speakerOn){
+      settings.speakerOn = true;
+      saveSettings();
+      updateVoiceUI();
+    }
+    if(!voicePrimed){
+      voicePrimed = true;
+      // 1-frame silent WAV, ~46 bytes. Plays and ends immediately;
+      // the user-gesture token from the mic click is then still valid
+      // when the real TTS audio arrives a few seconds later.
+      const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+      const a = new Audio(SILENT_WAV);
+      a.volume = 0;
+      a.play().catch(() => {});
+    }
+  }catch(_){ }
 
   // Silence detection via WebAudio analyser — auto-stop on quiet.
   try{
@@ -2751,7 +2773,10 @@ if(el.speakerBtn){
     settings.speakerOn = !settings.speakerOn;
     saveSettings();
     updateVoiceUI();
-    if(!settings.speakerOn && voiceAudio){ try{ voiceAudio.pause(); }catch(_){} voiceAudio = null; if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing'); }
+    if(!settings.speakerOn){
+      voicePrimed = false;
+      if(voiceAudio){ try{ voiceAudio.pause(); }catch(_){} voiceAudio = null; if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing'); }
+    }
   });
 }
 updateVoiceUI();
