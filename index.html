@@ -698,6 +698,55 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .send-btn svg{width:16px;height:16px;}
   .send-btn.stop-mode{background:linear-gradient(135deg, var(--danger), #ff6b6b);box-shadow:0 4px 14px -3px rgba(255,138,138,0.5);}
   .send-btn.stop-mode:hover{box-shadow:0 6px 18px -3px rgba(255,138,138,0.7);}
+
+  /* Voice input — mic button styled like the existing attach button. */
+  .tool-btn.mic-btn.recording{
+    background:rgba(255,138,138,0.20);
+    color:var(--danger);
+    border-color:rgba(255,138,138,0.45);
+  }
+  .tool-btn.mic-btn.recording svg{animation:micPulse 1.1s ease-in-out infinite;}
+  @keyframes micPulse{
+    0%,100%{transform:scale(1);opacity:1;}
+    50%{transform:scale(1.18);opacity:0.7;}
+  }
+  .recording-dot{
+    display:none;
+    width:8px;height:8px;border-radius:50%;
+    background:var(--danger);
+    box-shadow:0 0 0 0 rgba(255,138,138,0.6);
+    animation:recDot 1.2s ease-in-out infinite;
+    margin-right:6px;flex-shrink:0;
+  }
+  .recording-dot.show{display:inline-block;}
+  @keyframes recDot{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,138,138,0.6);}
+    50%{box-shadow:0 0 0 6px rgba(255,138,138,0);}
+  }
+  .voice-status{
+    display:none;
+    align-items:center;
+    font-size:11.5px;
+    color:var(--text-mid);
+    font-family:'JetBrains Mono',monospace;
+    letter-spacing:0.2px;
+    margin-right:6px;
+    flex-shrink:0;
+    padding:0 4px;
+    max-width:120px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .voice-status.show{display:flex;}
+  /* TTS speaker toggle — sits on the other side of the textarea, before the send button. */
+  .tool-btn.speaker-btn.active{
+    background:rgba(94,234,212,0.18);
+    color:var(--ok);
+    border-color:rgba(94,234,212,0.45);
+  }
+  /* TTS playback indicator on a bubble. */
+  .bubble.tts-playing{
+    box-shadow:0 0 0 1px rgba(94,234,212,0.35), 0 0 18px -2px rgba(94,234,212,0.25);
+  }
   .hint{
     text-align:center;font-size:11px;color:var(--text-mid);margin-top:10px;
     font-family:'JetBrains Mono',monospace;letter-spacing:0.2px;
@@ -1035,8 +1084,9 @@ body.ready{opacity:1;transition:opacity .25s ease;}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
             <input type="file" id="fileInput" accept="image/*" style="display:none">
+            <button class="tool-btn mic-btn" id="micBtn" title="Voice input (hold to talk)" aria-label="Voice input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
             <textarea id="input" rows="1" placeholder="Say something to your local model…"></textarea>
-            <button class="send-btn" id="sendBtn" disabled title="Send (Enter)" aria-label="Send message">
+            <span class="recording-dot" id="recDot" aria-hidden="true"></span><span class="voice-status" id="voiceStatus" aria-live="polite"></span><button class="tool-btn speaker-btn" id="speakerBtn" title="Read replies aloud" aria-label="Toggle read aloud" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button><button class="send-btn" id="sendBtn" disabled title="Send (Enter)" aria-label="Send message">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></svg>
             </button>
           </div>
@@ -1082,7 +1132,16 @@ body.ready{opacity:1;transition:opacity .25s ease;}
         <textarea id="prefsSystem" rows="3" placeholder="You are a helpful assistant that replies concisely."></textarea>
       </label>
 
-      <div class="pref-grid">
+      <label class="pref-label">
+        <span>Voice (STT) endpoint <em>(optional)</em></span>
+        <input type="text" id="prefsStt" placeholder="http://localhost:5005/transcribe" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="pref-label">
+        <span>Voice (TTS) endpoint <em>(optional)</em></span>
+        <input type="text" id="prefsTts" placeholder="http://localhost:5006/speak" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="pref-hint">Leave blank to hide voice buttons. The voice server runs separately — see the <code>voice_server.py</code> script in this repo.</p>
+<div class="pref-grid">
         <label class="pref-label">
           <span>Temperature</span>
           <input type="number" id="prefsTemp" min="0" max="2" step="0.1" placeholder="default">
@@ -1211,10 +1270,16 @@ const el = {
   prefsStatus: document.getElementById('prefsStatus'),
   prefsCancel: document.getElementById('prefsCancel'),
   prefsSave: document.getElementById('prefsSave'),
+  prefsStt: document.getElementById('prefsStt'),
+  prefsTts: document.getElementById('prefsTts'),
+  micBtn: document.getElementById('micBtn'),
+  speakerBtn: document.getElementById('speakerBtn'),
+  recDot: document.getElementById('recDot'),
+  voiceStatus: document.getElementById('voiceStatus'),
 };
 
 let state = { chats: [], activeId: null, theme: 'dark', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434' };
-let settings = { systemPrompt: '', temperature: null };
+let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
 let abortController = null;
@@ -1251,6 +1316,9 @@ function loadState(){
       const parsed = JSON.parse(raw);
       if(parsed && typeof parsed === 'object') settings = Object.assign(settings, parsed);
     }
+    settings.sttUrl = (typeof settings.sttUrl === 'string') ? settings.sttUrl : '';
+    settings.ttsUrl = (typeof settings.ttsUrl === 'string') ? settings.ttsUrl : '';
+    settings.speakerOn = !!settings.speakerOn;
   }catch(e){}
 }
 function saveState(){
@@ -2112,6 +2180,7 @@ async function sendMessage(text, opts){
     saveState();
     renderChatList();
     paintStreamingStats(bubble, fullReply, evalCount, streamStart);
+    voiceSpeakAssistant(fullReply, bubble);
   }catch(err){
     if(err.name === 'AbortError'){
       renderContent(bubble, fullReply || '_(stopped)_', false);
@@ -2120,6 +2189,7 @@ async function sendMessage(text, opts){
       saveState();
       renderChatList();
       paintStreamingStats(bubble, fullReply, evalCount, streamStart);
+      voiceSpeakAssistant(fullReply, bubble);
     } else {
       bubble.innerHTML = '<div style="color:var(--danger)">Couldn\'t get a response — the local server may have stopped.</div>';
       showError('Something went wrong talking to Ollama. Check that <code>ollama serve</code> is still running.');
@@ -2252,9 +2322,12 @@ function openPrefs(){
   el.prefsUrl.value = state.serverUrl || 'http://localhost:11434';
   el.prefsSystem.value = settings.systemPrompt || '';
   el.prefsTemp.value = (typeof settings.temperature === 'number') ? settings.temperature : '';
+  el.prefsStt.value = settings.sttUrl || '';
+  el.prefsTts.value = settings.ttsUrl || '';
   el.prefsStatus.textContent = '';
   el.prefsStatus.className = 'pref-status';
   el.prefsModal.classList.add('show');
+  updateVoiceUI();
 }
 function closePrefs(){ el.prefsModal.classList.remove('show'); }
 
@@ -2294,6 +2367,8 @@ el.prefsSave.addEventListener('click', async () => {
   settings.systemPrompt = sys || '';
   const t = parseFloat(el.prefsTemp.value);
   settings.temperature = isNaN(t) ? null : t;
+  settings.sttUrl = (el.prefsStt.value || '').trim().replace(/\/+$/, '') || '';
+  settings.ttsUrl = (el.prefsTts.value || '').trim().replace(/\/+$/, '') || '';
   saveState(); saveSettings();
   closePrefs();
   showToast('Preferences saved');
@@ -2421,6 +2496,265 @@ window.addEventListener('appinstalled', () => {
   const btn = document.getElementById('installAppBtn');
   if (btn) btn.hidden = true;
 });
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Voice layer — local speech-to-text and text-to-speech.
+   Wire-up is intentionally minimal: a mic button records with MediaRecorder,
+   POSTs the audio blob to settings.sttUrl, then funnels the transcript
+   through the existing sendMessage() pipeline. A speaker toggle lets the
+   assistant's reply stream be spoken back via settings.ttsUrl.
+
+   None of this restructures the existing chat pipeline — it sits on top.
+   ──────────────────────────────────────────────────────────────────────────── */
+let voiceMediaRecorder = null;
+let voiceMediaStream = null;
+let voiceChunks = [];
+let voiceRecordingStart = 0;
+let voiceSilenceTimer = null;
+let voiceLastBubble = null;
+let voiceAudio = null;
+const VOICE_SILENCE_MS = 1500;   // auto-stop after ~1.5s of quiet
+const VOICE_MAX_MS = 60000;      // hard cap: 60s of audio
+const VOICE_MIN_MS = 250;        // ignore accidental clicks
+
+function pickRecorderMime(){
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+  ];
+  for(const m of candidates){
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return ''; // let the browser pick a default
+}
+
+function setVoiceStatus(text){
+  if(!el.voiceStatus) return;
+  el.voiceStatus.textContent = text || '';
+  el.voiceStatus.classList.toggle('show', !!text);
+}
+
+function updateVoiceUI(){
+  const hasStt = !!(settings.sttUrl && /^https?:\/\//i.test(settings.sttUrl));
+  const hasTts = !!(settings.ttsUrl && /^https?:\/\//i.test(settings.ttsUrl));
+  if(el.micBtn) el.micBtn.style.display = hasStt ? '' : 'none';
+  if(el.speakerBtn){
+    el.speakerBtn.style.display = hasTts ? '' : 'none';
+    el.speakerBtn.classList.toggle('active', !!settings.speakerOn);
+    el.speakerBtn.setAttribute('aria-pressed', String(!!settings.speakerOn));
+  }
+}
+
+async function startVoiceRecording(){
+  if(voiceMediaRecorder && voiceMediaRecorder.state === 'recording') return;
+  if(!settings.sttUrl){ showError('Set a Speech-to-Text endpoint in <strong>Preferences → Voice</strong> first.'); return; }
+  if(isStreaming){ showError('Wait for the current reply to finish before recording.'); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showError('This browser does not support microphone capture.');
+    return;
+  }
+  try{
+    voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }catch(err){
+    const name = err && (err.name || '');
+    if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+      showError('Microphone permission denied. Allow mic access in your browser settings to use voice input.');
+    } else if(name === 'NotFoundError'){
+      showError('No microphone was found on this device.');
+    } else {
+      showError('Couldn\'t access the microphone: ' + (err && err.message ? err.message : 'unknown error'));
+    }
+    return;
+  }
+  voiceChunks = [];
+  const mime = pickRecorderMime();
+  try{
+    voiceMediaRecorder = mime
+      ? new MediaRecorder(voiceMediaStream, { mimeType: mime })
+      : new MediaRecorder(voiceMediaStream);
+  }catch(err){
+    showError('MediaRecorder failed to start: ' + (err && err.message ? err.message : 'unknown'));
+    stopVoiceStream();
+    return;
+  }
+  voiceMediaRecorder.addEventListener('dataavailable', e => {
+    if(e.data && e.data.size) voiceChunks.push(e.data);
+  });
+  voiceMediaRecorder.addEventListener('stop', onVoiceRecordingStop);
+  voiceMediaRecorder.addEventListener('error', e => {
+    showError('Recording error: ' + (e.error && e.error.message ? e.error.message : 'unknown'));
+  });
+  voiceRecordingStart = Date.now();
+  el.micBtn.classList.add('recording');
+  el.recDot.classList.add('show');
+  setVoiceStatus('recording…');
+  voiceMediaRecorder.start(250);
+
+  // Silence detection via WebAudio analyser — auto-stop on quiet.
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(voiceMediaStream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+    let lastLoud = Date.now();
+    const tick = () => {
+      if(!voiceMediaRecorder || voiceMediaRecorder.state !== 'recording') return;
+      analyser.getByteTimeDomainData(buf);
+      let rms = 0;
+      for(let i=0;i<buf.length;i++){ const v = (buf[i]-128)/128; rms += v*v; }
+      rms = Math.sqrt(rms / buf.length);
+      if(rms > 0.012) lastLoud = Date.now();
+      const elapsed = Date.now() - voiceRecordingStart;
+      if(Date.now() - lastLoud > VOICE_SILENCE_MS && elapsed > VOICE_MIN_MS){
+        stopVoiceRecording();
+        return;
+      }
+      if(elapsed > VOICE_MAX_MS){ stopVoiceRecording(); return; }
+      requestAnimationFrame(tick);
+    };
+    tick();
+    voiceMediaRecorder._noctaCtx = ctx;
+  }catch(_){
+    // No analyser available — user can still tap to stop.
+  }
+}
+
+function stopVoiceStream(){
+  if(voiceMediaStream){
+    voiceMediaStream.getTracks().forEach(t => t.stop());
+    voiceMediaStream = null;
+  }
+  const rec = voiceMediaRecorder;
+  if(rec && rec._noctaCtx){ try{ rec._noctaCtx.close(); }catch(_){ } rec._noctaCtx = null; }
+}
+
+function stopVoiceRecording(){
+  if(!voiceMediaRecorder || voiceMediaRecorder.state !== 'recording') return;
+  try{ voiceMediaRecorder.stop(); }catch(_){}
+}
+
+async function onVoiceRecordingStop(){
+  el.micBtn.classList.remove('recording');
+  el.recDot.classList.remove('show');
+  stopVoiceStream();
+  if(!voiceChunks.length){ setVoiceStatus(''); return; }
+  const mime = voiceMediaRecorder ? voiceMediaRecorder.mimeType : 'audio/webm';
+  const blob = new Blob(voiceChunks, { type: mime });
+  voiceChunks = [];
+  setVoiceStatus('transcribing…');
+  try{
+    const form = new FormData();
+    const ext = (mime.split('/')[1] || 'webm').split(';')[0];
+    form.append('audio', blob, 'voice.' + ext);
+    const r = await fetch(settings.sttUrl, { method: 'POST', body: form });
+    if(!r.ok) throw new Error('STT responded with ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    const text = (data && (data.text || data.transcript || data.transcription)) || '';
+    setVoiceStatus('');
+    if(!text || !text.trim()){
+      showError('No speech detected. Try again, a little louder.');
+      return;
+    }
+    // Hand the transcript off to the existing send pipeline. Setting it on
+    // el.input preserves the user's ability to edit before sending, then we
+    // auto-submit so they don't have to tap the button twice.
+    if(isStreaming){
+      showError('Wait for the current reply to finish before sending voice.');
+      return;
+    }
+    el.input.value = text.trim();
+    autoGrow();
+    el.sendBtn.disabled = false;
+    sendMessage();
+  }catch(err){
+    setVoiceStatus('');
+    const msg = (err && err.message) || 'unknown';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)){
+      showError('Couldn\'t reach the voice server. Is <code>voice_server.py</code> running on the STT port?');
+    } else {
+      showError('Voice transcription failed: ' + msg);
+    }
+  } finally {
+    voiceMediaRecorder = null;
+  }
+}
+
+async function voiceSpeakAssistant(text, bubble){
+  if(!settings.speakerOn) return;
+  if(!settings.ttsUrl){ return; }
+  const clean = (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#>*_~]/g, ' ').replace(/\s+/g, ' ').trim();
+  if(!clean) return;
+  // Stop any previous TTS so replies don't queue up.
+  if(voiceAudio){ try{ voiceAudio.pause(); }catch(_){ } voiceAudio = null; }
+  voiceLastBubble = bubble || null;
+  if(voiceLastBubble) voiceLastBubble.classList.add('tts-playing');
+  try{
+    const r = await fetch(settings.ttsUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: clean })
+    });
+    if(!r.ok) throw new Error('TTS responded with ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    voiceAudio = new Audio(url);
+    voiceAudio.addEventListener('ended', () => {
+      URL.revokeObjectURL(url);
+      if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
+      voiceLastBubble = null;
+      voiceAudio = null;
+    });
+    voiceAudio.addEventListener('error', () => {
+      URL.revokeObjectURL(url);
+      if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
+      voiceLastBubble = null;
+      voiceAudio = null;
+    });
+    await voiceAudio.play().catch(err => {
+      URL.revokeObjectURL(url);
+      if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
+      voiceLastBubble = null;
+      voiceAudio = null;
+      // Browsers gate autoplay behind a user gesture; the first tap on the
+      // speaker toggle counts as that gesture, so subsequent TTS works.
+      if(err && err.name === 'NotAllowedError'){
+        showError('Autoplay blocked. Click the speaker toggle once to enable read-aloud.');
+      }
+    });
+  }catch(err){
+    if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
+    voiceLastBubble = null;
+    const msg = (err && err.message) || 'unknown';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)){
+      showError('Couldn\'t reach the voice server. Is <code>voice_server.py</code> running on the TTS port?');
+    } else {
+      showError('Text-to-speech failed: ' + msg);
+    }
+  }
+}
+
+// Wire-up: mic click toggles recording; speaker click toggles the read-aloud
+// preference. Both depend on the URLs configured in Preferences.
+if(el.micBtn){
+  el.micBtn.addEventListener('click', () => {
+    if(voiceMediaRecorder && voiceMediaRecorder.state === 'recording') stopVoiceRecording();
+    else startVoiceRecording();
+  });
+}
+if(el.speakerBtn){
+  el.speakerBtn.addEventListener('click', () => {
+    if(!settings.ttsUrl){ showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
+    settings.speakerOn = !settings.speakerOn;
+    saveSettings();
+    updateVoiceUI();
+    if(!settings.speakerOn && voiceAudio){ try{ voiceAudio.pause(); }catch(_){} voiceAudio = null; if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing'); }
+  });
+}
+updateVoiceUI();
 </script>
 </body>
 </html>

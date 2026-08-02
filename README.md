@@ -41,6 +41,7 @@ USB stick.
 - [The curated model catalog](#the-curated-model-catalog)
 - [Features](#features)
 - [Preferences and settings](#preferences-and-settings)
+- [Voice input and output (local)](#voice-input-and-output-local)
 - [Math rendering (KaTeX)](#math-rendering-katex)
 - [Table repair](#table-repair)
 - [Performance strategy](#performance-strategy)
@@ -391,6 +392,105 @@ There are also two checkboxes that toggle:
 
 Click **Test connection** inside Preferences to ping Ollama before
 saving.
+
+---
+
+## Voice input and output (local)
+
+Nocta ships with an optional **fully local voice layer**: tap a mic icon
+to dictate, and toggle a speaker icon to have the assistant's reply read
+back to you. The speech-to-text runs on [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+and the text-to-speech runs on [Piper](https://github.com/rhasspy/piper).
+Nothing leaves your machine — both models run on the CPU and download
+on first use.
+
+The voice UI only appears once the endpoints are configured, so the
+chat app behaves identically to before if you don't set this up.
+
+### 1. Install the dependencies (one-time)
+
+```bash
+pip install fastapi 'uvicorn[standard]' python-multipart faster-whisper piper-tts
+```
+
+Piper will pull `onnxruntime` (~150MB) as part of its install. Whisper
+downloads its model on first request — the `tiny` model is **~75MB**
+(`base` is ~150MB if you want higher accuracy).
+
+For best webm/opus decoding from the browser, also install `ffmpeg`
+(`brew install ffmpeg` on macOS, `apt install ffmpeg` on Linux). The
+server falls back to the Python stdlib `wave` decoder if ffmpeg is
+absent, but you'll get errors on Chrome/Edge's webm-opus by default.
+
+### 2. Start the voice server
+
+```bash
+git clone https://github.com/bikash-20/ollama-local-model-website
+cd ollama-local-model-website
+python voice_server.py
+```
+
+This launches **two** FastAPI apps in one process:
+
+| Endpoint | Default | Purpose |
+|----------|---------|---------|
+| `POST http://localhost:5005/transcribe` | multipart `audio` field | Returns `{"text": "..."}` |
+| `POST http://localhost:5006/speak`      | JSON `{"text": "..."}`           | Returns `audio/wav` bytes |
+
+Both endpoints enable CORS for any origin, so Nocta can call them
+directly from `file://` or `http://localhost`. Override defaults with
+env vars: `STT_PORT`, `TTS_PORT`, `STT_HOST`, `TTS_HOST`,
+`WHISPER_MODEL` (`tiny|base|small|medium`), `PIPER_VOICE`.
+
+Disk footprint with defaults: **~135MB** total (75MB whisper tiny +
+~60MB piper en_US-amy-low voice).
+
+### 3. Run things in this order
+
+1. `ollama serve` (your existing Ollama daemon — unchanged)
+2. `python voice_server.py` (this repo)
+3. Open `index.html` in Chrome, Edge, or Brave
+
+### 4. Wire it into Nocta
+
+Open the **gear icon → Preferences** modal and fill in:
+
+- **Voice (STT) endpoint** — `http://localhost:5005/transcribe`
+- **Voice (TTS) endpoint** — `http://localhost:5006/speak`
+
+Click **Save**. The mic and speaker icons appear in the input bar.
+
+### 5. Using it
+
+- **Mic button**: click to start recording (red pulse + dot appear in the
+  input bar). Click again to stop, or just stop talking — the server
+  auto-stops after ~1.5s of silence. The audio blob is POSTed to your
+  STT endpoint, the transcript is dropped into the text input, and
+  `sendMessage()` runs through the existing pipeline so it shows up in
+  your conversation history like any typed message.
+- **Speaker button**: click once to enable read-aloud. After each
+  assistant reply finishes streaming, the cleaned text is POSTed to
+  your TTS endpoint and the returned `.wav` is autoplayed inline. The
+  bubble it's playing from gets a soft cyan glow. Click again to mute.
+- **First autoplay**: most browsers require a user gesture before they
+  allow audio to play. The first click on the speaker toggle counts as
+  that gesture, so subsequent replies play automatically.
+
+Errors are reported through the same red error banner the rest of the
+app uses — no silent failures. Mic permission denied, the voice server
+being down, or transcription returning empty text all surface there.
+
+### Troubleshooting
+
+- **"Couldn't reach the voice server"** — make sure `voice_server.py`
+  is running and the URL in Preferences matches the port you actually
+  bound (`STT_PORT`/`TTS_PORT`).
+- **Autoplay blocked** — click the speaker toggle once to grant the
+  gesture, then replies will autoplay.
+- **"No speech detected"** — speak louder, or switch `WHISPER_MODEL=base`
+  for slightly better accuracy at the cost of another ~75MB.
+- **ffmpeg missing** — install it (`brew install ffmpeg`) so Chrome's
+  webm-opus blobs decode correctly.
 
 ---
 
