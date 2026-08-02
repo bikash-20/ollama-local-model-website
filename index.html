@@ -2710,10 +2710,12 @@ async function onVoiceRecordingStop(){
 }
 
 async function voiceSpeakAssistant(text, bubble){
-  if(!settings.speakerOn) return;
-  if(!settings.ttsUrl){ showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
+  console.log('[TTS] enter — speakerOn:', settings.speakerOn, 'ttsUrl:', settings.ttsUrl, 'text len:', (text||'').length);
+  if(!settings.speakerOn){ console.log('[TTS] early-return: speaker off'); return; }
+  if(!settings.ttsUrl){ console.log('[TTS] early-return: no ttsUrl'); showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
   const clean = (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#>*_~]/g, ' ').replace(/\s+/g, ' ').trim();
-  if(!clean) return;
+  console.log('[TTS] cleaned text len:', clean.length, 'voiceCtx:', !!voiceCtx, 'ctxState:', voiceCtx && voiceCtx.state);
+  if(!clean){ console.log('[TTS] early-return: empty after cleanup'); return; }
 
   // Stop any previous TTS so replies don't queue up.
   if(voiceSource){ try{ voiceSource.stop(); }catch(_){ } voiceSource = null; }
@@ -2722,13 +2724,16 @@ async function voiceSpeakAssistant(text, bubble){
   if(voiceLastBubble) voiceLastBubble.classList.add('tts-playing');
 
   try{
+    console.log('[TTS] POST →', settings.ttsUrl);
     const r = await fetch(settings.ttsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: clean })
     });
+    console.log('[TTS] fetch status:', r.status, 'content-type:', r.headers.get('content-type'));
     if(!r.ok) throw new Error('TTS responded with ' + r.status);
     const buf = await r.arrayBuffer();
+    console.log('[TTS] audio bytes:', buf.byteLength);
     if(!buf.byteLength) throw new Error('TTS returned empty audio');
 
     // Prefer Web Audio (token survives the user-gesture window once we've
@@ -2736,20 +2741,24 @@ async function voiceSpeakAssistant(text, bubble){
     // somehow unavailable.
     if(voiceCtx){
       try{
+        console.log('[TTS] decoding with Web Audio…');
         const audioBuf = await voiceCtx.decodeAudioData(buf.slice(0));
+        console.log('[TTS] decoded — duration:', audioBuf.duration.toFixed(2), 's');
         const src = voiceCtx.createBufferSource();
         src.buffer = audioBuf;
         src.connect(voiceCtx.destination);
         voiceSource = src;
         src.onended = () => {
+          console.log('[TTS] playback ended');
           if(voiceSource === src) voiceSource = null;
           if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
           voiceLastBubble = null;
         };
         src.start(0);
+        console.log('[TTS] src.start(0) called — should be audible now');
         return;
       }catch(decodeErr){
-        console.warn('Web Audio decode failed, falling back to <audio>:', decodeErr);
+        console.warn('[TTS] Web Audio decode failed, falling back to <audio>:', decodeErr);
       }
     }
 
@@ -2784,6 +2793,7 @@ async function voiceSpeakAssistant(text, bubble){
       }
     }
   }catch(err){
+    console.error('[TTS] caught error:', err);
     if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
     voiceLastBubble = null;
     const msg = (err && err.message) || 'unknown';
