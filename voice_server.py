@@ -86,11 +86,13 @@ PIPER_VOICE = os.environ.get("PIPER_VOICE", "en_US-amy-medium")
 
 # Voice directory. Relative paths are resolved from the script directory
 # (so the project is self-contained and portable). Default is ./voices/.
+# A leading "~" is expanded to the current user's home, which lets people
+# keep a shared voice cache outside the repo (e.g. ~/piper-voices).
 _raw_voices_dir = os.environ.get(
     "VOICES_DIR",
     os.environ.get("PIPER_VOICES_DIR", "./voices"),  # legacy alias
 )
-_voices_path = Path(_raw_voices_dir)
+_voices_path = Path(_raw_voices_dir).expanduser()
 if not _voices_path.is_absolute():
     _voices_path = (_SCRIPT_DIR / _voices_path).resolve()
 PIPER_VOICES_DIR = _voices_path
@@ -207,13 +209,11 @@ def _stt_app() -> FastAPI:
     async def transcribe(audio: bytes = File(...), language: Optional[str] = Form(None)):
         if not audio:
             raise HTTPException(400, "empty audio upload")
-        try:
-            pcm, sr = await asyncio.to_thread(_decode_audio_to_pcm16, audio)
-        except HTTPException:
-            raise
-        except Exception as e:
-            log.exception("audio decode failed")
-            raise HTTPException(400, f"audio decode failed: {e}")
+        # faster-whisper ships its own PyAV-based decoder (with bundled ffmpeg),
+        # so it handles webm/opus/wav/mp3 directly. Hand it the raw upload bytes
+        # wrapped in a BytesIO so PyAV's open() has something with .read().
+        audio_buf = io.BytesIO(audio)
+        audio_buf.name = "audio.webm"  # helps PyAV pick a demuxer
 
         try:
             model = _whisper.get()
@@ -222,7 +222,7 @@ def _stt_app() -> FastAPI:
                 model = _whisper._model
             segments, info = await asyncio.to_thread(
                 model.transcribe,
-                pcm, language=language, beam_size=WHISPER_BEAM,
+                audio_buf, language=language, beam_size=WHISPER_BEAM,
                 vad_filter=True, condition_on_previous_text=False,
             )
             text = " ".join(seg.text.strip() for seg in segments).strip()
@@ -346,7 +346,10 @@ def _tts_app() -> FastAPI:
             def synth():
                 buf = io.BytesIO()
                 with wave.open(buf, "wb") as wf:
-                    voice.synthesize(text, wf)
+                    # `synthesize_wav` sets sample rate / width / channels on
+                    # the first chunk — required, since `wave` rejects writes
+                    # before any of those are set.
+                    voice.synthesize_wav(text, wf)
                 return buf.getvalue()
 
             wav_bytes = await asyncio.to_thread(synth)
