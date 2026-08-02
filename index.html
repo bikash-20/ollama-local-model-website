@@ -2514,6 +2514,8 @@ let voiceSilenceTimer = null;
 let voiceLastBubble = null;
 let voiceAudio = null;
 let voicePrimed = false;
+let voiceCtx = null;       // shared AudioContext for TTS playback
+let voiceSource = null;    // current AudioBufferSourceNode, so we can stop it
 const VOICE_SILENCE_MS = 1500;   // auto-stop after ~1.5s of quiet
 const VOICE_MAX_MS = 60000;      // hard cap: 60s of audio
 const VOICE_MIN_MS = 250;        // ignore accidental clicks
@@ -2546,6 +2548,20 @@ function updateVoiceUI(){
     el.speakerBtn.classList.toggle('active', !!settings.speakerOn);
     el.speakerBtn.setAttribute('aria-pressed', String(!!settings.speakerOn));
   }
+}
+
+// Prime a shared AudioContext inside a user gesture so subsequent TTS
+// playback isn't blocked by autoplay. Safe to call repeatedly.
+function primeAudioForTTS(){
+  try{
+    if(!voiceCtx){
+      voiceCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(voiceCtx.state === 'suspended'){
+      voiceCtx.resume().catch(() => {});
+    }
+    voicePrimed = true;
+  }catch(_){ /* Web Audio unavailable — fall through, <audio> still works */ }
 }
 
 async function startVoiceRecording(){
@@ -2593,24 +2609,12 @@ async function startVoiceRecording(){
   setVoiceStatus('recording…');
   voiceMediaRecorder.start(250);
 
-  // Auto-enable read-aloud for this session if a TTS endpoint is configured,
-  // and prime a silent <audio> element so the upcoming reply can play
-  // without the browser blocking it as autoplay.
+  // Auto-enable read-aloud for this session if a TTS endpoint is configured.
   try{
     if(settings.ttsUrl && !settings.speakerOn){
       settings.speakerOn = true;
       saveSettings();
       updateVoiceUI();
-    }
-    if(!voicePrimed){
-      voicePrimed = true;
-      // 1-frame silent WAV, ~46 bytes. Plays and ends immediately;
-      // the user-gesture token from the mic click is then still valid
-      // when the real TTS audio arrives a few seconds later.
-      const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
-      const a = new Audio(SILENT_WAV);
-      a.volume = 0;
-      a.play().catch(() => {});
     }
   }catch(_){ }
 
@@ -2707,13 +2711,16 @@ async function onVoiceRecordingStop(){
 
 async function voiceSpeakAssistant(text, bubble){
   if(!settings.speakerOn) return;
-  if(!settings.ttsUrl){ return; }
+  if(!settings.ttsUrl){ showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
   const clean = (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#>*_~]/g, ' ').replace(/\s+/g, ' ').trim();
   if(!clean) return;
+
   // Stop any previous TTS so replies don't queue up.
+  if(voiceSource){ try{ voiceSource.stop(); }catch(_){ } voiceSource = null; }
   if(voiceAudio){ try{ voiceAudio.pause(); }catch(_){ } voiceAudio = null; }
   voiceLastBubble = bubble || null;
   if(voiceLastBubble) voiceLastBubble.classList.add('tts-playing');
+
   try{
     const r = await fetch(settings.ttsUrl, {
       method: 'POST',
@@ -2721,7 +2728,33 @@ async function voiceSpeakAssistant(text, bubble){
       body: JSON.stringify({ text: clean })
     });
     if(!r.ok) throw new Error('TTS responded with ' + r.status);
-    const blob = await r.blob();
+    const buf = await r.arrayBuffer();
+    if(!buf.byteLength) throw new Error('TTS returned empty audio');
+
+    // Prefer Web Audio (token survives the user-gesture window once we've
+    // primed it in the mic click). Fall back to <audio> if Web Audio is
+    // somehow unavailable.
+    if(voiceCtx){
+      try{
+        const audioBuf = await voiceCtx.decodeAudioData(buf.slice(0));
+        const src = voiceCtx.createBufferSource();
+        src.buffer = audioBuf;
+        src.connect(voiceCtx.destination);
+        voiceSource = src;
+        src.onended = () => {
+          if(voiceSource === src) voiceSource = null;
+          if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
+          voiceLastBubble = null;
+        };
+        src.start(0);
+        return;
+      }catch(decodeErr){
+        console.warn('Web Audio decode failed, falling back to <audio>:', decodeErr);
+      }
+    }
+
+    // Fallback: <audio> element
+    const blob = new Blob([buf], { type: r.headers.get('content-type') || 'audio/wav' });
     const url = URL.createObjectURL(blob);
     voiceAudio = new Audio(url);
     voiceAudio.addEventListener('ended', () => {
@@ -2735,18 +2768,21 @@ async function voiceSpeakAssistant(text, bubble){
       if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
       voiceLastBubble = null;
       voiceAudio = null;
+      showError('Audio playback failed — the response was empty or malformed.');
     });
-    await voiceAudio.play().catch(err => {
+    try{
+      await voiceAudio.play();
+    }catch(err){
       URL.revokeObjectURL(url);
       if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
       voiceLastBubble = null;
       voiceAudio = null;
-      // Browsers gate autoplay behind a user gesture; the first tap on the
-      // speaker toggle counts as that gesture, so subsequent TTS works.
       if(err && err.name === 'NotAllowedError'){
         showError('Autoplay blocked. Click the speaker toggle once to enable read-aloud.');
+      } else {
+        showError('Audio playback failed: ' + (err && err.message ? err.message : 'unknown'));
       }
-    });
+    }
   }catch(err){
     if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
     voiceLastBubble = null;
@@ -2763,6 +2799,9 @@ async function voiceSpeakAssistant(text, bubble){
 // preference. Both depend on the URLs configured in Preferences.
 if(el.micBtn){
   el.micBtn.addEventListener('click', () => {
+    // Prime Web Audio inside the same user-gesture so TTS playback works
+    // even on the very first reply after the page loads.
+    primeAudioForTTS();
     if(voiceMediaRecorder && voiceMediaRecorder.state === 'recording') stopVoiceRecording();
     else startVoiceRecording();
   });
@@ -2773,8 +2812,10 @@ if(el.speakerBtn){
     settings.speakerOn = !settings.speakerOn;
     saveSettings();
     updateVoiceUI();
+    if(settings.speakerOn) primeAudioForTTS();
     if(!settings.speakerOn){
       voicePrimed = false;
+      if(voiceSource){ try{ voiceSource.stop(); }catch(_){} voiceSource = null; }
       if(voiceAudio){ try{ voiceAudio.pause(); }catch(_){} voiceAudio = null; if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing'); }
     }
   });
