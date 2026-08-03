@@ -1739,7 +1739,12 @@ async function loadModels(silent){
   if(!silent) el.refreshBtn.classList.add('spin');
   setOnline(false, 'checking');
   try{
-    const res = await fetch(ollamaBase() + '/api/tags');
+    // Soft 3s timeout — if Ollama is busy on /api/chat, prefer to keep
+    // the previously known model list rather than flip into "offline".
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 3000);
+    const res = await fetch(ollamaBase() + '/api/tags', { signal: ctrl.signal });
+    clearTimeout(tid);
     if(!res.ok) throw new Error('bad response');
     const data = await res.json();
     setOnline(true, 'ok');
@@ -1763,6 +1768,13 @@ async function loadModels(silent){
     // Show installed models + any catalog items the user hasn't pulled yet (greyed out).
     populateModelDropdown(false);
   }catch(err){
+    // Aborted by our own timeout — Ollama is just slow right now (likely
+    // busy on /api/chat). Keep the previous model list and silently retry
+    // on the next tick instead of flapping the UI into "offline".
+    if(err && err.name === 'AbortError'){
+      setOnline(true, 'ok');
+      return;
+    }
     setOnline(false, 'local');
     // Ollama unreachable. Show the catalog as a "what you could install" list.
     state.models = [];
@@ -2435,7 +2447,12 @@ populateModelDropdown(true);
 })();
 
 loadModels();
-setInterval(() => loadModels(true), 15000);
+// Background poll for model list refreshes. Skipped while a chat reply is
+// streaming: Ollama can be slow to answer /api/tags while it's busy on
+// /api/chat, and any failure here would flip the UI into the offline
+// state and wipe the installed-models list (showing "not installed"
+// for the very model that's currently replying).
+setInterval(() => { if(!isStreaming) loadModels(true); }, 15000);
 
 // Boot reveal — flip the body opacity once the JS has wired up. Done with
 // rAF + a small grace so fonts don't punch a layout shift on first swap.
