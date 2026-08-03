@@ -1,180 +1,131 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
-# start-nocta.sh — bring up Ollama + the voice server in one command.
-#
-# Behavior:
-#   * If Ollama is already serving on :11434, leave it alone.
-#     Otherwise start `ollama serve` in the background via nohup and
-#     record its PID to logs/ollama.pid (output -> logs/ollama.log).
-#   * If the voice server is already listening on :5005 and :5006,
-#     leave it alone. Otherwise activate .venv, start
-#     `python voice_server.py` via nohup, record its PID to
-#     logs/voice.pid (output -> logs/voice.log).
-#   * If .venv does not exist, print a clear error pointing at
-#     ./setup.sh and exit non-zero.
-#
-# POSIX-portable bash — targets macOS and Linux. Windows users should
-# follow the manual steps in the README instead.
-#
-# Usage:
-#   ./start-nocta.sh
-# ─────────────────────────────────────────────────────────────────────────────
+# start-nocta.sh — brings up everything Nocta needs in one command.
+#   - Starts Ollama (if not already running on :11434)
+#   - Starts the local voice server on :5005 / :5006
+# Both run in the background via nohup; logs go to logs/*.log and
+# PIDs to logs/*.pid. Run ./stop-nocta.sh to shut everything down.
+
 set -euo pipefail
+cd "$(dirname "$0")"
 
-# Resolve paths relative to THIS script, not the cwd.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+LOGS_DIR="logs"
+mkdir -p "$LOGS_DIR"
 
-# ---- Pretty logging ---------------------------------------------------------
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[0;33m'
-RED=$'\033[0;31m'
-DIM=$'\033[0;90m'
-RESET=$'\033[0m'
-say()  { printf '%s==>%s %s\n' "$GREEN"  "$RESET" "$*"; }
-warn() { printf '%s!!%s  %s\n' "$YELLOW" "$RESET" "$*"; }
-die()  { printf '%sXX%s  %s\n' "$RED"    "$RESET" "$*" >&2; exit 1; }
-quiet() { printf '%s   %s%s\n' "$DIM" "$*" "$RESET"; }
-
-# ---- Paths ------------------------------------------------------------------
-LOGS_DIR="$SCRIPT_DIR/logs"
 OLLAMA_LOG="$LOGS_DIR/ollama.log"
 OLLAMA_PID="$LOGS_DIR/ollama.pid"
 VOICE_LOG="$LOGS_DIR/voice.log"
 VOICE_PID="$LOGS_DIR/voice.pid"
 
-mkdir -p "$LOGS_DIR"
-
 # ---- Helpers ----------------------------------------------------------------
-# `port_in_use <port>` — returns 0 if something is listening on the port,
-# 1 otherwise. Uses lsof, which ships with macOS and most Linux distros.
 port_in_use() {
-    local port="$1"
-    if command -v lsof >/dev/null 2>&1; then
-        lsof -i :"$port" -sTCP:LISTEN -P -n >/dev/null 2>&1
-        return $?
-    fi
-    # Fallback: try ss, then netstat.
-    if command -v ss >/dev/null 2>&1; then
-        ss -ltn "sport = :$port" 2>/dev/null | grep -q LISTEN
-        return $?
-    fi
-    if command -v netstat >/dev/null 2>&1; then
-        netstat -ltn 2>/dev/null | awk '{print $4}' | grep -E "(^|:)${port}$" | grep -q LISTEN
-        return $?
-    fi
-    warn "Could not find lsof, ss, or netstat — assuming port $port is free."
-    return 1
+    lsof -i :"$1" -sTCP:LISTEN -P -n >/dev/null 2>&1
 }
 
-# `read_pid <pidfile>` — echoes the PID from a file if it exists and
-# points at a live process; otherwise echoes empty.
-read_pid() {
-    local f="$1"
-    [[ -f "$f" ]] || return 0
-    local pid
-    pid="$(cat "$f" 2>/dev/null || true)"
-    [[ -n "${pid:-}" ]] || return 0
-    # kill -0 == "does this PID exist?"
-    if command -v kill >/dev/null 2>&1 && kill -0 "$pid" 2>/dev/null; then
-        printf '%s\n' "$pid"
+# ---- Optional .env hints ----------------------------------------------------
+# Honor OLLAMA_ORIGINS from .env so the hosted PWA (e.g.
+# https://bikash-20.github.io) isn't rejected by Ollama with HTTP 403.
+# file://, http://localhost, and http://127.0.0.1 are already allowed by
+# Ollama's defaults — we only forward extra origins.
+if [[ -f ".env" ]]; then
+    ENV_OLLAMA_ORIGINS="$(grep -E '^OLLAMA_ORIGINS=' .env | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    if [[ -n "${ENV_OLLAMA_ORIGINS:-}" ]]; then
+        export OLLAMA_ORIGINS="$ENV_OLLAMA_ORIGINS"
+        echo "    using OLLAMA_ORIGINS from .env: $OLLAMA_ORIGINS"
     fi
-}
-
-# ---- 1. Ollama --------------------------------------------------------------
-say "Checking Ollama (port 11434)..."
-OLLAMA_PORT=11434
-if port_in_use "$OLLAMA_PORT"; then
-    warn "Ollama already listening on :$OLLAMA_PORT — leaving it alone."
-else
-    if ! command -v ollama >/dev/null 2>&1; then
-        die "ollama not found on PATH. Install Ollama first: https://ollama.com/download"
-    fi
-    say "Starting Ollama in the background..."
-    # nohup + & so this script can return. Logs go to logs/ollama.log.
-    nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
-    OLLAMA_NEW_PID=$!
-    echo "$OLLAMA_NEW_PID" >"$OLLAMA_PID"
-    quiet "  pid: $OLLAMA_NEW_PID"
-    quiet "  log: $OLLAMA_LOG"
-
-    # Wait up to ~10s for the port to open, polling every 0.5s.
-    waited=0
-    while ! port_in_use "$OLLAMA_PORT"; do
-        waited=$((waited + 1))
-        if (( waited > 20 )); then
-            die "Ollama did not start within 10s. Check $OLLAMA_LOG."
-        fi
-        # Bail out early if the process already died.
-        if ! kill -0 "$OLLAMA_NEW_PID" 2>/dev/null; then
-            die "ollama serve exited immediately. Tail of $OLLAMA_LOG:
-$(tail -n 20 "$OLLAMA_LOG" 2>/dev/null || true)"
-        fi
-        sleep 0.5
-    done
-    say "Ollama is up on :$OLLAMA_PORT."
 fi
 
-# ---- 2. Voice server --------------------------------------------------------
-say "Checking voice server (ports 5005/5006)..."
+# ---- Ollama -----------------------------------------------------------------
+echo "==> Checking Ollama (port 11434)..."
+if port_in_use 11434; then
+  echo "    Ollama already listening on :11434 — skipping."
+else
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "    ERROR: ollama not found on PATH. Install from https://ollama.com/download" >&2
+    exit 1
+  fi
+  echo "    Starting Ollama..."
+  nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
+  OLLAMA_NEW_PID=$!
+  echo "$OLLAMA_NEW_PID" >"$OLLAMA_PID"
+
+  # Wait up to ~10s for the port to open.
+  waited=0
+  until port_in_use 11434; do
+    waited=$((waited + 1))
+    if (( waited > 20 )); then
+      echo "    ERROR: Ollama did not start within 10s. Check $OLLAMA_LOG." >&2
+      exit 1
+    fi
+    if ! kill -0 "$OLLAMA_NEW_PID" 2>/dev/null; then
+      echo "    ERROR: ollama serve exited immediately. Tail of $OLLAMA_LOG:" >&2
+      tail -n 20 "$OLLAMA_LOG" >&2 || true
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "    Ollama started (PID $OLLAMA_NEW_PID). Logs: $OLLAMA_LOG"
+fi
+
+# ---- Voice server -----------------------------------------------------------
+echo "==> Checking voice server (ports 5005/5006)..."
 STT_PORT=5005
 TTS_PORT=5006
 if port_in_use "$STT_PORT" && port_in_use "$TTS_PORT"; then
-    warn "Voice server already listening on :$STT_PORT and :$TTS_PORT — leaving it alone."
+  echo "    Voice server already listening on :$STT_PORT and :$TTS_PORT — skipping."
 elif port_in_use "$STT_PORT" || port_in_use "$TTS_PORT"; then
-    die "Only one of :$STT_PORT/:$TTS_PORT is in use. Stop the stray process first
-  (try ./stop-nocta.sh, or:  lsof -i :$STT_PORT ; lsof -i :$TTS_PORT)."
+  echo "    ERROR: Only one of :$STT_PORT/:$TTS_PORT is in use. Stop the stray process first" >&2
+  echo "    (try ./stop-nocta.sh, or:  lsof -i :$STT_PORT ; lsof -i :$TTS_PORT)." >&2
+  exit 1
 else
-    if [[ ! -d ".venv" ]]; then
-        die ".venv does not exist. Run ./setup.sh first to install Python deps."
-    fi
-    if [[ ! -f "voice_server.py" ]]; then
-        die "voice_server.py not found in $SCRIPT_DIR. Did you clone the full repo?"
-    fi
+  if [[ ! -d ".venv" ]]; then
+    echo "    ERROR: .venv not found. Run ./setup.sh first." >&2
+    exit 1
+  fi
+  if [[ ! -f "voice_server.py" ]]; then
+    echo "    ERROR: voice_server.py not found. Did you clone the full repo?" >&2
+    exit 1
+  fi
 
-    say "Starting voice server in the background..."
-    # Activate the venv, then launch. We use a subshell so the activation
-    # doesn't leak into the parent environment.
-    (
-        # shellcheck disable=SC1091
-        source .venv/bin/activate
-        nohup python voice_server.py >"$VOICE_LOG" 2>&1 &
-        echo $! >"$VOICE_PID"
-    )
-    VOICE_NEW_PID="$(cat "$VOICE_PID" 2>/dev/null || true)"
-    quiet "  pid: $VOICE_NEW_PID"
-    quiet "  log: $VOICE_LOG"
+  echo "    Starting voice server..."
+  (
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+    nohup python voice_server.py >"$VOICE_LOG" 2>&1 &
+    echo $! >"$VOICE_PID"
+  )
+  VOICE_NEW_PID="$(cat "$VOICE_PID" 2>/dev/null || true)"
 
-    # Wait up to ~15s for both ports to open.
-    waited=0
-    while ! port_in_use "$STT_PORT" || ! port_in_use "$TTS_PORT"; do
-        waited=$((waited + 1))
-        if (( waited > 30 )); then
-            die "Voice server did not open :$STT_PORT/:$TTS_PORT within 15s. Check $VOICE_LOG."
-        fi
-        if ! kill -0 "$VOICE_NEW_PID" 2>/dev/null; then
-            die "voice_server.py exited immediately. Tail of $VOICE_LOG:
-$(tail -n 20 "$VOICE_LOG" 2>/dev/null || true)"
-        fi
-        sleep 0.5
-    done
-    say "Voice server is up on :$STT_PORT / :$TTS_PORT."
+  # Wait up to ~15s for both ports to open.
+  waited=0
+  until port_in_use "$STT_PORT" && port_in_use "$TTS_PORT"; do
+    waited=$((waited + 1))
+    if (( waited > 30 )); then
+      echo "    ERROR: Voice server did not open :$STT_PORT/:$TTS_PORT within 15s. Check $VOICE_LOG." >&2
+      exit 1
+    fi
+    if ! kill -0 "$VOICE_NEW_PID" 2>/dev/null; then
+      echo "    ERROR: voice_server.py exited immediately. Tail of $VOICE_LOG:" >&2
+      tail -n 20 "$VOICE_LOG" >&2 || true
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "    Voice server started (PID $VOICE_NEW_PID). Logs: $VOICE_LOG"
 fi
 
-# ---- 3. Summary -------------------------------------------------------------
+# ---- Summary ----------------------------------------------------------------
 cat <<EOF
 
-${GREEN}Nocta is ready.${RESET}
+Everything's up. Open your Nocta app (PWA or index.html) and start chatting.
 
-  Ollama       -> http://localhost:11434   (log: ${DIM}${OLLAMA_LOG}${RESET})
-  Voice (STT)  -> http://localhost:${STT_PORT}/transcribe  (log: ${DIM}${VOICE_LOG}${RESET})
-  Voice (TTS)  -> http://localhost:${TTS_PORT}/speak       (log: ${DIM}${VOICE_LOG}${RESET})
+  Ollama       -> http://localhost:11434
+  Voice (STT)  -> http://localhost:${STT_PORT}/transcribe
+  Voice (TTS)  -> http://localhost:${TTS_PORT}/speak
+  OLLAMA_ORIGINS = ${OLLAMA_ORIGINS:-<default — file://, http://localhost, http://127.0.0.1>}
 
-Open the app:
-  macOS : ${YELLOW}open index.html${RESET}
-  Linux : ${YELLOW}xdg-open index.html${RESET}
-  (or visit https://bikash-20.github.io/ollama-local-model-website/)
+If you opened the hosted PWA (https://bikash-20.github.io/...) and saw
+HTTP 403 on /api/tags, set OLLAMA_ORIGINS in your .env to that origin
+and re-run ./start-nocta.sh.
 
-When you're done: ${YELLOW}./stop-nocta.sh${RESET}
-
+Run ./stop-nocta.sh when you're done to shut both servers down cleanly.
 EOF

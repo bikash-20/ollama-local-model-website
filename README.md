@@ -812,8 +812,14 @@ the **Clear all chats** button in the sidebar footer.
 1. **Bind address** — make sure Ollama is listening on `0.0.0.0`, not
    just `127.0.0.1`. See
    [Use it from any device on your LAN](#use-it-from-any-device-on-your-lan).
-2. **CORS** — Ollama allows any origin by default. If you have set
-   `OLLAMA_ORIGINS`, add the page's URL to the allow-list.
+2. **CORS / origin check** — Ollama rejects requests whose `Origin`
+   header isn't in `OLLAMA_ORIGINS` with **HTTP 403** and you'll see
+   repeating `403 ... GET /api/tags` lines in `logs/ollama.log`.
+   `file://`, `http://localhost`, and `http://127.0.0.1` are always
+   allowed. If you opened Nocta from a hosted URL (e.g.
+   `https://bikash-20.github.io/...`), add it to `.env` as
+   `OLLAMA_ORIGINS=https://bikash-20.github.io` and re-run
+   `./start-nocta.sh`.
 3. **Firewall** — see the firewall note above for macOS.
 4. **Mixed content** — if the page is served over `https://`, Ollama
    must be reachable over `https://` too. Easiest fix: open the HTML

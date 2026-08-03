@@ -39,3 +39,6 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+
+# start-nocta.sh / stop-nocta.sh runtime artifacts (PIDs and stdout logs).
+logs/
