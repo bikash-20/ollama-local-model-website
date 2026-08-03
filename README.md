@@ -112,6 +112,11 @@ ollama serve
 By default Ollama listens on `http://localhost:11434`. That is already the
 default endpoint in Nocta, so nothing else needs to change for local use.
 
+> Prefer one command? Run `./start-nocta.sh` to bring up both Ollama
+> and the voice server at once, and `./stop-nocta.sh` when you're done.
+> Logs and PIDs live under `logs/`. You still need to run `./setup.sh`
+> once before the voice server can start.
+
 ### 3. Open the file
 
 Double-click `index.html`, or:
