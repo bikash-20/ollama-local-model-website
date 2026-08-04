@@ -112,26 +112,47 @@ ollama serve
 By default Ollama listens on `http://localhost:11434`. That is already the
 default endpoint in Nocta, so nothing else needs to change for local use.
 
-> Prefer one command? Run `./start-nocta.sh` to bring up both Ollama
-> and the voice server at once, and `./stop-nocta.sh` when you're done.
-> Logs and PIDs live under `logs/`. You still need to run `./setup.sh`
-> once before the voice server can start.
+> Prefer one command? Run `./start-nocta.sh` to bring up Ollama, the
+> voice server, and a local static HTTP server on port 8000 (configurable
+> via `NOCTA_HTTP_PORT` in `.env`, or `./start-nocta.sh --no-http` to
+> skip). Then `./stop-nocta.sh` shuts them all down. Logs and PIDs live
+> under `logs/`. You still need to run `./setup.sh` once before the
+> voice server can start.
 
-### 3. Open the file
+### 3. Open the app — recommended way
 
-Double-click `index.html`, or:
+The most reliable way to use Nocta is to serve it from a local HTTP
+server and visit it in the browser. That avoids the two common
+pitfalls below and means the same `http://localhost:11434` endpoint
+just works with no extra config.
 
 ```bash
-# macOS
-open index.html
-
-# Linux
-xdg-open index.html
-
-# Or serve it (any static server works)
+# In the repo folder, in a separate terminal from `ollama serve`:
 python3 -m http.server 8000
-# then visit http://localhost:8000/
+# then visit http://localhost:8000/ in Chrome, Edge, or Brave
 ```
+
+That's it. The sidebar fills in with your installed models pulled
+from `/api/tags` and you can start chatting. Leave the server
+running; `Ctrl-C` in that terminal stops it.
+
+#### Other ways to open it
+
+These also work, but each has a caveat:
+
+- **Hosted GitHub Pages** (`https://bikash-20.github.io/...`) — the
+  page is `https://` but Ollama is `http://`, so the browser blocks
+  the requests as **mixed content** and you'll see "Ollama server not
+  detected" even though Ollama is running. See
+  [Troubleshooting → Mixed content](#test-connection-fails-but-ollama-is-running)
+  for the three real fixes (open `file://`, run an HTTPS reverse proxy,
+  or the Chrome dev-flag allow-list).
+- **`file://`** (double-click `index.html`) — works fine for chat.
+  The only thing you give up is the option to install the page as a
+  PWA via the address bar; for that, use the HTTP server above.
+- **Other static servers** — anything that serves the repo folder
+  over `http://localhost` works. `npx serve`, `caddy file-server`,
+  etc. — pick what you have.
 
 The first time it loads you will see a small skeleton while the page
 boots, then the sidebar appears with your model list pulled from

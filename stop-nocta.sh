@@ -22,6 +22,7 @@ stop_pid() {
 }
 
 stop_pid "voice server" "voice"
+stop_pid "HTTP server" "http"
 stop_pid "Ollama" "ollama"
 
 echo ""
@@ -29,3 +30,4 @@ echo "If anything is still holding a port, check manually with:"
 echo "  lsof -i :11434   # Ollama"
 echo "  lsof -i :5005     # STT"
 echo "  lsof -i :5006     # TTS"
+echo "  lsof -i :8000     # Static HTTP server (default NOCTA_HTTP_PORT)"

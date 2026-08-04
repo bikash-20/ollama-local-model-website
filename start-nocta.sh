@@ -2,11 +2,33 @@
 # start-nocta.sh — brings up everything Nocta needs in one command.
 #   - Starts Ollama (if not already running on :11434)
 #   - Starts the local voice server on :5005 / :5006
-# Both run in the background via nohup; logs go to logs/*.log and
+#   - Starts a local static HTTP server on $NOCTA_HTTP_PORT (default 8000)
+#     unless --no-http is passed. This is the recommended way to open
+#     Nocta in the browser — see README "Quick start".
+# All three run in the background via nohup; logs go to logs/*.log and
 # PIDs to logs/*.pid. Run ./stop-nocta.sh to shut everything down.
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# ---- CLI flags --------------------------------------------------------------
+START_HTTP=1
+HTTP_PORT=8000
+for arg in "$@"; do
+    case "$arg" in
+        --no-http) START_HTTP=0 ;;
+        --http-port=*) HTTP_PORT="${arg#*=}" ;;
+        -h|--help)
+            sed -n '2,12p' "$0"
+            echo ""
+            echo "Options:"
+            echo "  --no-http           Skip the local static HTTP server"
+            echo "  --http-port=N       Bind the HTTP server to port N (default 8000;"
+            echo "                      also honored from .env as NOCTA_HTTP_PORT)"
+            exit 0 ;;
+        *) echo "Unknown flag: $arg" >&2; exit 1 ;;
+    esac
+done
 
 LOGS_DIR="logs"
 mkdir -p "$LOGS_DIR"
@@ -15,6 +37,8 @@ OLLAMA_LOG="$LOGS_DIR/ollama.log"
 OLLAMA_PID="$LOGS_DIR/ollama.pid"
 VOICE_LOG="$LOGS_DIR/voice.log"
 VOICE_PID="$LOGS_DIR/voice.pid"
+HTTP_LOG="$LOGS_DIR/http.log"
+HTTP_PID="$LOGS_DIR/http.pid"
 
 # ---- Helpers ----------------------------------------------------------------
 port_in_use() {
@@ -31,6 +55,11 @@ if [[ -f ".env" ]]; then
     if [[ -n "${ENV_OLLAMA_ORIGINS:-}" ]]; then
         export OLLAMA_ORIGINS="$ENV_OLLAMA_ORIGINS"
         echo "    using OLLAMA_ORIGINS from .env: $OLLAMA_ORIGINS"
+    fi
+    ENV_HTTP_PORT="$(grep -E '^NOCTA_HTTP_PORT=' .env | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    if [[ -n "${ENV_HTTP_PORT:-}" ]]; then
+        HTTP_PORT="$ENV_HTTP_PORT"
+        echo "    using NOCTA_HTTP_PORT from .env: $HTTP_PORT"
     fi
 fi
 
@@ -113,11 +142,61 @@ else
   echo "    Voice server started (PID $VOICE_NEW_PID). Logs: $VOICE_LOG"
 fi
 
+# ---- Static HTTP server (recommended way to open Nocta) ---------------------
+HTTP_URL=""
+if (( START_HTTP )); then
+    echo "==> Checking static HTTP server (port $HTTP_PORT)..."
+    if port_in_use "$HTTP_PORT"; then
+        echo "    HTTP server already listening on :$HTTP_PORT — skipping."
+        HTTP_URL="http://localhost:$HTTP_PORT/"
+    else
+        if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+            echo "    WARNING: neither python3 nor python found on PATH; skipping HTTP server." >&2
+        else
+            PY_BIN="$(command -v python3 || command -v python)"
+            echo "    Starting HTTP server on :$HTTP_PORT..."
+            nohup "$PY_BIN" -m http.server "$HTTP_PORT" >"$HTTP_LOG" 2>&1 &
+            HTTP_NEW_PID=$!
+            echo "$HTTP_NEW_PID" >"$HTTP_PID"
+
+            waited=0
+            until port_in_use "$HTTP_PORT"; do
+                waited=$((waited + 1))
+                if (( waited > 20 )); then
+                    echo "    ERROR: HTTP server did not open :$HTTP_PORT within 10s. Check $HTTP_LOG." >&2
+                    exit 1
+                fi
+                if ! kill -0 "$HTTP_NEW_PID" 2>/dev/null; then
+                    echo "    ERROR: HTTP server exited immediately. Tail of $HTTP_LOG:" >&2
+                    tail -n 20 "$HTTP_LOG" >&2 || true
+                    exit 1
+                fi
+                sleep 0.5
+            done
+            echo "    HTTP server started (PID $HTTP_NEW_PID). Logs: $HTTP_LOG"
+            HTTP_URL="http://localhost:$HTTP_PORT/"
+        fi
+    fi
+fi
+
 # ---- Summary ----------------------------------------------------------------
 cat <<EOF
 
-Everything's up. Open your Nocta app (PWA or index.html) and start chatting.
+Everything's up. Open your Nocta app and start chatting.
+EOF
+if [[ -n "$HTTP_URL" ]]; then
+    cat <<EOF
+  Recommended: ${HTTP_URL}
+  (static HTTP server — same origin family as Ollama, no mixed content)
+EOF
+else
+    cat <<EOF
+  Open index.html directly (file://) or visit the hosted PWA at
+  https://bikash-20.github.io/ollama-local-model-website/
 
+EOF
+fi
+cat <<EOF
   Ollama       -> http://localhost:11434
   Voice (STT)  -> http://localhost:${STT_PORT}/transcribe
   Voice (TTS)  -> http://localhost:${TTS_PORT}/speak
@@ -127,5 +206,5 @@ If you opened the hosted PWA (https://bikash-20.github.io/...) and saw
 HTTP 403 on /api/tags, set OLLAMA_ORIGINS in your .env to that origin
 and re-run ./start-nocta.sh.
 
-Run ./stop-nocta.sh when you're done to shut both servers down cleanly.
+Run ./stop-nocta.sh when you're done to shut everything down cleanly.
 EOF
