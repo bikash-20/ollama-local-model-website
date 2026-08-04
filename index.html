@@ -1564,69 +1564,149 @@ function preprocessMarkdown(src){
 }
 
 // Strong TeX signals: backslash commands OR common math symbols.
-const TEX_CMD = /\\(?:frac|sqrt|cdot|times|div|pm|mp|leq|geq|neq|approx|sum|prod|int|lim|sin|cos|tan|log|ln|exp|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|omega|infty|partial|nabla|vec|hat|bar|tilde|overline|underline|mathbf|mathrm|text|mathrm|left|right|begin|end|tag|label|mathrm|hspace|mathrm|text)/;
-const TEX_SYM = /[∑∏∫√∂∇∞≈≠≤≥±∓→←↑↓∈∉⊂⊃∪∩]/;
+// Signal regexes for math detection.
+//
+// TEX_CMD: the most reliable signal — the model emitted a real LaTeX command.
+// We keep the list generous so we don't miss common ones like \binom, \cdot,
+// \mapsto, or log-ish operators. The full list is a superset of what KaTeX
+// itself supports; we just need at least one hit to fire the wrap heuristic.
+const TEX_CMD = /\\(?:frac|tfrac|dfrac|binom|sqrt|root|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|sum|prod|int|oint|lim|sin|cos|tan|cot|sec|csc|log|ln|exp|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|omicron|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|partial|nabla|forall|exists|nexists|emptyset|cup|cap|subset|supset|subseteq|supseteq|in|notin|to|mapsto|rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow|vec|hat|bar|tilde|overline|underline|widehat|widetilde|mathbf|mathrm|mathit|mathcal|mathfrak|mathbb|mathsf|text|begingroup|endgroup|operatorname|textstyle|displaystyle|scriptstyle|scriptscriptstyle|left|right|big|Big|bigg|Bigg|begin|end|tag|label|hspace|mathrm|text|color|boxed|cancel|fbox|stackrel|overset|underset|substack|stackrel|pmod|mod|bmod|quad|qquad|ldots|cdots|dots|vdots|ddots|circ|bullet|star|dagger|ddagger|amalg|ast|oplus|ominus|otimes|oslash|wr|propto|prec|preceq|succ|succeq|asymp|doteq|cong|bowtie|models|perp|mid|parallel|angle|triangle|square|lozenge|blacksquare|clubsuit|diamondsuit|heartsuit|spadesuit|suit|hbar|ell|hbar|imath|jmath|Re|Im|surd|prime|backprime|wp|mho)/;
+// TEX_SYM: unicode math symbols that the model might emit verbatim.
+const TEX_SYM = /[∑∏∫√∂∇∞≈≠≤≥±∓→←↑↓∈∉⊂⊃∪∩·×÷]/;
 // Implicit-math signal: things like x^2, a_n, x_i that only make sense as LaTeX
 // when no other formatting is present. Used as a fallback for very lazy outputs.
 const TEX_IMPLICIT = /[A-Za-z]\^[\{A-Za-z0-9]|[A-Za-z]_\{?[A-Za-z0-9]/;
 // A "looks-like-an-equation" signal: short lines that are mostly math chars.
-const EQUATION_LIKE = /^[\s]*[A-Za-z0-9_\^\\\+\-\*\/\=\(\)\s\{\}\.]+[\s]*$/;
+// We keep it deliberately permissive (allow `[` and `]`, `(`, `)` so bracket
+// lines that look like math still get caught) but disallow English-letter
+// words like "are", "and", "the".
+const EQUATION_LIKE = /^[\s]*[A-Za-z0-9_\^\\\+\-\*\/\=\(\)\{\}\[\]\.,:'\s]+[\s]*$/;
+// Line that is just a math-y expression with no English. "n_th = a_n + 1"
+// qualifies; "of the form (ax^2 + bx + c)" does not (contains "of the").
+// Lines that contain common English function words are prose, not math.
+// We deliberately omit single-letter words (`a`, `i`) because they collide
+// with math tokens like `\frac{a}{b}`. We also omit words that frequently
+// appear in math notation as variable names (`in`, `if`, `or`, `be`).
+const HAS_ENGLISH_WORD = /\b(?:the|of|and|are|was|were|to|when|then|for|with|from|that|where|but|not|into|onto|over|also|such|these|those|their|there|here|this|which|what|how|why|than|does|did|has|have|had|can|could|may|might|will|would|should|shall|you|they|while|using|used|becomes|equals|where|given|since|through|thus|hence|because|although|though|whereas|accordingly|therefore|otherwise|wherever|whereby)\b/i;
+
+// Math-stash marker. We protect code spans/fences from math-wrapping, then
+// restore them at the end. The marker uses NULL bytes which can never appear
+// in a real chat message (unless the user pastes literal NULs — in which
+// case they have bigger problems).
+function mathStashKey(i){ return '\x00MATHSTASH' + i + '\x00'; }
 
 function wrapBareLatex(src){
   if(!src) return src;
 
-  // Multi-line case: a block that's just `[ ... ]` (each on its own line)
-  // wrapping LaTeX. Convert it to $$ ... $$.
-  src = src.replace(/^\[([\s\S]*?)\]$/gm, (m, inner) => {
-    const trimmed = inner.trim();
-    if(!trimmed) return m;
-    const hasTex = TEX_CMD.test(trimmed) || TEX_SYM.test(trimmed);
-    if(!hasTex) return m;
-    return trimmed.includes('\n') ? '$$\n' + trimmed + '\n$$' : '$' + trimmed + '$';
+  // -------- Pass 0: protect code fences and inline code --------
+  // We stash ```...``` and `...` so the per-line passes can't touch them.
+  const stash = [];
+  src = src.replace(/```[\s\S]*?```|`[^`\n]+`/g, m => {
+    stash.push(m);
+    return mathStashKey(stash.length - 1);
   });
 
-  // Wrap `( ... )` or `( ... )` segments on a line that contain math.
-  // Example: "of the form ( ax^2 + bx + c = 0 )"  →  "of the form $ax^2 + bx + c = 0$"
-  // We only do this when the parenthetical content looks like a math equation.
-  src = src.replace(/\(\s*([^\(\)]*?[A-Za-z0-9]\^[A-Za-z0-9\{\}][^\(\)]*?|[^\(\)]*?\\[a-zA-Z][^\(\)]*?)\s*\)/g,
-    (m, inner) => {
-      const t = inner.trim();
-      // Don't double-wrap if already inside a math context.
-      if(/^\$/.test(t) || /\$\s*$/.test(t)) return m;
-      return '$' + t + '$';
+  // -------- Pass 1: multi-line `[ ... ]` block -> $$ ... $$ --------
+  // The previous version used `/^\[...\]$/gm` which matched the brackets but
+  // then ran a per-line wrap on the inside, splitting `\frac` from `{...}`
+  // onto separate lines and emitting half-eaten TeX. The new regex requires
+  // the block to actually contain a TeX signal, and only converts the block
+  // once, so subsequent passes never see the inner lines.
+  //
+  // Match: optional indent + `[` + ... + `]` on its own line (or trailing
+  // whitespace). Inner may span multiple lines. We require the inner to look
+  // like math (TEX_CMD / TEX_SYM / TEX_IMPLICIT), otherwise it's just text
+  // in brackets and we leave it alone.
+  //
+  // Important: we also stash the resulting $$ ... $$ block, because the
+  // per-line passes (Pass 4/5) below would otherwise try to re-wrap the
+  // inner lines and produce nested $...$ inside the display block.
+  src = src.replace(/(^|\n)([ \t]*)\[([\s\S]*?)\]([ \t]*(?=\n|$))/g,
+    (m, lead, indent, inner, tail) => {
+      const t = inner.replace(/^[ \t]+|[ \t]+$/gm, '');
+      if(!t) return m;
+      if(!TEX_CMD.test(t) && !TEX_SYM.test(t) && !TEX_IMPLICIT.test(t)) return m;
+      const inner2 = t.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+      const block = '$$\n' + inner2 + '\n$$';
+      stash.push(block);
+      return lead + indent + mathStashKey(stash.length - 1) + tail;
     });
 
-  // Wrap whole lines that look like pure LaTeX (TeX primitives, no markdown
-  // structure, and no existing delimiters). We do this last so the previous
-  // transformations don't get re-classified.
+  // -------- Pass 1b: stash pre-existing $$ ... $$ and $ ... $ blocks --------
+  // If the model already emitted $$ ... $$ or $ ... $ delimiters, leave them
+  // alone. Per-line passes must not wrap their contents.
+  src = src.replace(/\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$/g, m => {
+    stash.push(m);
+    return mathStashKey(stash.length - 1);
+  });
+
+  // -------- Pass 2: single-line `[ ... ]` with TeX -> $...$ --------
+  // Example: "The roots are [ x = \frac{-b...}{2a} ]"
+  //                   -> "The roots are $x = \frac{-b...}{2a}$"
+  src = src.replace(/\[(\s[^\[\]\n]*?[A-Za-z\\][^\[\]\n]*?\s)\]/g, (m, inner) => {
+    const t = inner.trim();
+    if(!TEX_CMD.test(t) && !TEX_SYM.test(t) && !TEX_IMPLICIT.test(t)) return m;
+    return '$' + t + '$';
+  });
+
+  // -------- Pass 3: paren-wrap segments with math --------
+  // Example: "of the form ( ax^2 + bx + c = 0 )"  →  "...$ax^2 + bx + c = 0$"
+  // We only do this when the parenthetical content looks like a math equation.
+  // Require the content to be short and math-y; reject if it contains a full
+  // English sentence.
+  src = src.replace(/\(\s*([^\(\)]+?)\s*\)/g, (m, inner) => {
+    const t = inner.trim();
+    if(/^\$/.test(t) || /\$\s*$/.test(t)) return m;
+    if(!TEX_CMD.test(t) && !TEX_SYM.test(t) && !TEX_IMPLICIT.test(t)) return m;
+    if(t.length > 80) return m;
+    if(HAS_ENGLISH_WORD.test(t)) return m;
+    return '$' + t + '$';
+  });
+
+  // -------- Pass 4: whole lines that look like pure LaTeX --------
+  // Wrap lines whose trimmed form contains a TeX command and reads as math,
+  // not as prose. We skip markdown structure (headings, lists, blockquotes,
+  // tables) and skip lines that already have a delimiter.
   src = src.split('\n').map(line => {
     const trimmed = line.trim();
     if(!trimmed) return line;
     // Skip lines already containing a math delimiter.
     if(/\$\$|\$[^\$]+\$|\\\(|\\\)|\\\[|\\\]/.test(line)) return line;
     // Skip lines that are clearly markdown structure.
-    if(/^#{1,6}\s/.test(trimmed) || /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) return line;
-    if(/^[|`]/.test(trimmed)) return line;
+    if(/^#{1,6}\s/.test(trimmed)) return line;             // headings
+    if(/^[-*+]\s/.test(trimmed)) return line;              // bullet lists
+    if(/^\d+\.\s/.test(trimmed)) return line;              // numbered lists
+    if(/^[|`]/.test(trimmed)) return line;                 // blockquote / table
+    if(/^>/.test(trimmed)) return line;                    // blockquote
     const hasTex = TEX_CMD.test(line) || TEX_SYM.test(line);
     if(!hasTex) return line;
     const tokens = line.split(/\s+/).filter(Boolean);
     if(tokens.length > 14) return line;
+    if(HAS_ENGLISH_WORD.test(line)) return line;
     return '$' + trimmed + '$';
   }).join('\n');
 
-  // Second pass: catch short equation-like lines that slipped through (e.g.
-  // "b^2 - 4ac" or "a_n + 1"). These have no \commands but read as LaTeX.
+  // -------- Pass 5: short implicit-equation lines --------
+  // Catches "b^2 - 4ac", "a_n + 1", "n_th = a_n + 1". These have no
+  // \commands but read as LaTeX.
   src = src.split('\n').map(line => {
     const trimmed = line.trim();
     if(!trimmed) return line;
     if(/\$\$|\$[^\$]+\$|\\\(|\\\)|\\\[|\\\]/.test(line)) return line;
-    if(/^#{1,6}\s/.test(trimmed) || /^[-*+]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) return line;
+    if(/^#{1,6}\s/.test(trimmed)) return line;
+    if(/^[-*+]\s/.test(trimmed)) return line;
+    if(/^\d+\.\s/.test(trimmed)) return line;
     if(/^[|`]/.test(trimmed)) return line;
+    if(/^>/.test(trimmed)) return line;
     if(trimmed.length > 60) return line;
     if(!TEX_IMPLICIT.test(line)) return line;
     if(!EQUATION_LIKE.test(trimmed)) return line;
+    if(HAS_ENGLISH_WORD.test(trimmed)) return line;
     return '$' + trimmed + '$';
   }).join('\n');
+
+  // -------- Pass 6: restore code fences/spans --------
+  src = src.replace(/\x00MATHSTASH(\d+)\x00/g, (_, i) => stash[+i]);
 
   return src;
 }

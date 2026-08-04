@@ -743,6 +743,22 @@ If the heuristic ever wraps something it shouldn't, edit the regexes at
 the top of `wrapBareLatex` inside the file. They are deliberately short
 and read like English.
 
+### Tests
+
+The wrapper has a self-contained test harness at `test_math.mjs` that
+runs `wrapBareLatex` against the broken outputs seen in the wild
+(Qwen-style multi-line `[ ... ]` blocks, single-line bracket math,
+paren-wrap, code-fence protection, idempotency, etc.) and asserts the
+wrapped delimiters are valid. Run it with:
+
+```bash
+node test_math.mjs
+```
+
+It needs only Node 18+ — no `npm install`, no dependencies. Twelve
+cases ship in the file; add a new one whenever a model emits a math
+shape that should have been wrapped but wasn't.
+
 ---
 
 ## Table repair
