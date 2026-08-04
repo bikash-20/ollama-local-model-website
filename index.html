@@ -300,12 +300,40 @@ body.ready{opacity:1;transition:opacity .25s ease;}
 
   .main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;}
   .header{
-    display:flex;align-items:center;gap:12px;
-    padding:16px 20px;
+    display:flex;flex-direction:column;gap:10px;
+    padding:14px 20px 12px;
     border-bottom:1px solid var(--glass-border);
     flex-shrink:0;background:rgba(0,0,0,0.05);
   }
   [data-theme="light"] .header{background:rgba(255,255,255,0.25);}
+  /* Two rows inside the header: the existing branding row, plus a metrics
+     row underneath. Both use flex so children collapse cleanly on narrow
+     widths without breaking out of the header. */
+  .header-row{display:flex;align-items:center;gap:12px;min-width:0;}
+  .header-row.header-top{display:flex;}
+  .header-row.header-metrics{padding:0 2px;}
+  /* Inside the consolidated header, the model picker is the visual focal
+     point — give it more presence than the old sidebar-sized version.
+     `max-width` caps how greedy the picker is on phone widths so it can't
+     push the brand mark off-screen or overflow its parent row.
+     `text-overflow:ellipsis` on the select keeps long model tags from
+     blowing out the chrome on narrow devices. */
+  .header-select{flex:1 1 0;min-width:0;max-width:260px;display:flex;}
+  .header-select select{
+    font-size:13px;font-weight:600;
+    padding:9px 34px 9px 14px;
+    border-radius:12px;
+    background:var(--glass-strong);
+    width:100%;min-width:0;max-width:100%;
+    text-overflow:ellipsis;overflow:hidden;
+  }
+  /* Keep the brand block anchored so the picker can't squeeze it off-screen. */
+  .brand{flex:0 1 auto;}
+  /* Visually hide but keep accessible to screen readers. */
+  .visually-hidden{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  }
   .menu-btn{display:flex;width:36px;height:36px;}
   .menu-btn svg{width:18px;height:18px;}
 
@@ -415,8 +443,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     50%{transform:scale(1.3);opacity:0.2;}
   }
 
-  .modelbar{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
-  .modelbar label{font-size:11px;color:var(--text-low);font-family:'JetBrains Mono',monospace;letter-spacing:0.4px;flex-shrink:0;}
   .select-wrap{position:relative;flex:1;min-width:0;display:flex;}
   /* Compact button-style dropdown — sized to content, capped at the row width. */
   select{
@@ -447,46 +473,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .refresh-btn.spin svg{animation:spin 0.7s linear;}
   @keyframes spin{to{transform:rotate(360deg);}}
 
-  /* Active-model badge — sits below the modelbar showing display name, params, and quantization.
-     The badge sizes itself to its content (up to a 540px cap) so it never stretches the column. */
-  .model-badge{
-    display:none;
-    padding:0 20px 12px;
-    font-family:'JetBrains Mono',monospace;
-    font-size:10.5px;letter-spacing:0.4px;color:var(--text-mid);
-  }
-  .model-badge:not(:empty)+.messages-wrap{margin-top:0;}
-  .model-badge:empty{display:none;}
-  .model-badge .pill-row{
-    display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;
-    padding:5px 10px;
-    background:linear-gradient(135deg, rgba(124,156,255,0.10), rgba(185,140,255,0.08));
-    border:1px solid var(--glass-border);
-    border-radius:99px;
-  }
-  [data-theme="light"] .model-badge .pill-row{background:linear-gradient(135deg, rgba(124,156,255,0.12), rgba(185,140,255,0.10));}
-  .model-badge .mb-name{
-    color:var(--text-hi);font-weight:600;letter-spacing:0.3px;
-    font-family:'Inter',sans-serif;font-size:12px;
-  }
-  .model-badge .mb-sep{color:var(--text-low);opacity:0.6;}
-  .model-badge .mb-tag{
-    background:var(--glass-strong);padding:1px 7px;border-radius:99px;
-    font-size:9.5px;color:var(--text-mid);letter-spacing:0.5px;
-  }
-  .model-badge .mb-tag.quant{
-    color:#a7f3d0;background:rgba(94,234,212,0.12);
-  }
-  [data-theme="light"] .model-badge .mb-tag.quant{background:rgba(13,148,136,0.10);color:#0f766e;}
-  .model-badge .mb-size{color:var(--text-low);font-size:10px;}
-  /* Active-model indicator dot inside the pill. */
-  .model-badge .mb-dot{
-    width:6px;height:6px;border-radius:50%;
-    background:#5eead4;
-    box-shadow:0 0 8px #5eead4, 0 0 14px rgba(94,234,212,0.45);
-    animation:halo-pulse 2.4s ease-out infinite;
-    flex-shrink:0;
-  }
   /* When a real model is selected, gently ring the dropdown chrome so the connection feels alive. */
   .select-wrap.has-model select{border-color:rgba(94,234,212,0.45);box-shadow:0 0 0 3px rgba(94,234,212,0.08);}
 
@@ -746,6 +732,35 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .bubble.tts-playing{
     box-shadow:0 0 0 1px rgba(94,234,212,0.35), 0 0 18px -2px rgba(94,234,212,0.25);
   }
+
+  /* Live status bar: model name, RAM, speed, context — sits as a compact
+     second row inside the top header so it doesn't steal height from the
+     chat feed. Glass-y to match the rest of the bar. */
+  .metrics-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    width:100%;padding:6px 12px;border-radius:10px;
+    background:var(--glass-strong);border:1px solid var(--glass-border);
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);
+    letter-spacing:0.2px;flex-wrap:wrap;
+  }
+  .metrics-bar.is-empty{opacity:0.55;}
+  .metrics-bar .metric{
+    display:inline-flex;align-items:center;gap:5px;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .metrics-bar .metric .label{color:var(--text-low);text-transform:uppercase;font-size:9px;letter-spacing:0.6px;}
+  .metrics-bar .metric .value{color:var(--text-hi);font-weight:500;}
+  .metrics-bar .metric.live .value{color:var(--accent);}
+  .metrics-bar .metric .dot{
+    width:6px;height:6px;border-radius:50%;background:var(--text-low);flex-shrink:0;
+    transition:background 0.2s ease;
+  }
+  .metrics-bar .metric.live .dot{background:var(--accent);box-shadow:0 0 6px rgba(124,156,255,0.7);animation:metricPulse 1.4s ease-in-out infinite;}
+  @keyframes metricPulse{0%,100%{opacity:1;}50%{opacity:0.45;}}
+  /* Keep the model name from pushing other slots off-screen. */
+  .metrics-bar .metric.model{flex:1 1 auto;min-width:0;}
+  .metrics-bar .metric.model .value{overflow:hidden;text-overflow:ellipsis;}
+
   .hint{
     text-align:center;font-size:11px;color:var(--text-mid);margin-top:10px;
     font-family:'JetBrains Mono',monospace;letter-spacing:0.2px;
@@ -908,16 +923,28 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     .brand-text p{font-size:10.5px;}
     .status span.status-text{display:none;}
     body.sidebar-collapsed .sidebar{margin-left:0;}
+    /* Tighten the consolidated header rows so the model picker stays prominent. */
+    .header{padding:12px 16px 10px;gap:8px;}
+    .header-row{gap:10px;}
+    .header-select select{font-size:12.5px;}
   }
   /* Phone: tighter paddings, full-width chat column. */
   @media (max-width:600px){
     :root{--sidebar-w:84vw;}
     .messages{padding:16px 14px 12px;gap:14px;}
-    .header{padding:12px 14px;gap:8px;}
-    .modelbar{padding:10px 14px;gap:8px;}
-    .modelbar label{display:none;}
-    .model-badge{padding:0 14px 8px;}
-    .model-badge .pill-row{font-size:10.5px;padding:5px 9px;gap:6px;}
+    .header{padding:10px 12px 10px;gap:8px;}
+    /* Tighter row gaps so the consolidated header stays compact. */
+    .header-row.header-top{gap:8px;}
+    .header-row.header-metrics{padding:0;}
+    /* Hide the brand subtitle so the model picker gets more horizontal room. */
+    .brand-text p{display:none;}
+    /* Cap the picker on phones so long model tags can't overflow the row. */
+    .header-select{flex:1 1 0;max-width:200px;}
+    .header-select select{font-size:11.5px;padding:6px 26px 6px 10px;border-radius:9px;}
+    .refresh-btn{width:32px;height:32px;border-radius:10px;}
+    .refresh-btn svg{width:15px;height:15px;}
+    .status{padding:5px 10px;font-size:10px;gap:6px;}
+    .status .dot{width:8px;height:8px;}
     .inputbar{padding:8px 10px 10px;}
     .field{padding:3px 3px 3px 10px;border-radius:18px;gap:4px;}
     .bubble{font-size:14px;padding:11px 14px;border-radius:16px;}
@@ -930,6 +957,12 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     .chip{padding:7px 12px;font-size:12px;}
     .hint{font-size:10px;gap:4px;flex-wrap:wrap;}
     .hint kbd{padding:1px 5px;}
+    /* Metrics row gets a smaller font and drops the least-critical slot
+       (context window) on phones so the row doesn't wrap awkwardly. The
+       other three remain visible: model, RAM, speed. */
+    .metrics-bar{font-size:9.5px;padding:5px 8px;gap:6px;flex-wrap:wrap;row-gap:4px;}
+    .metrics-bar .metric .label{font-size:8px;}
+    .metrics-bar .metric.context{display:none;}
     .avatar{width:30px;height:30px;border-radius:9px;}
     .menu-btn{width:36px;height:36px;}
     .mark-lg{width:36px;height:36px;border-radius:11px;}
@@ -1018,38 +1051,60 @@ body.ready{opacity:1;transition:opacity .25s ease;}
 
       <main class="main">
         <header class="header">
-          <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Open menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </button>
-          <div class="brand">
-            <div class="mark-lg">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3C8 3 6 6 6 9.5c0 1.8.6 3 1.2 4-1 .6-1.8 1.7-1.8 3 0 2 1.6 3.5 3.6 3.5.5 0 1-.1 1.4-.3.4.5 1 .8 1.6.8s1.2-.3 1.6-.8c.4.2.9.3 1.4.3 2 0 3.6-1.5 3.6-3.5 0-1.3-.8-2.4-1.8-3 .6-1 1.2-2.2 1.2-4C18 6 16 3 12 3z" stroke="#0a0a12" stroke-width="1.4" fill="rgba(10,10,18,0.15)"/><circle cx="10" cy="10.5" r="0.9" fill="#0a0a12"/><circle cx="14" cy="10.5" r="0.9" fill="#0a0a12"/></svg>
+          <div class="header-row header-top">
+            <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Open menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="brand">
+              <div class="mark-lg">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 3C8 3 6 6 6 9.5c0 1.8.6 3 1.2 4-1 .6-1.8 1.7-1.8 3 0 2 1.6 3.5 3.6 3.5.5 0 1-.1 1.4-.3.4.5 1 .8 1.6.8s1.2-.3 1.6-.8c.4.2.9.3 1.4.3 2 0 3.6-1.5 3.6-3.5 0-1.3-.8-2.4-1.8-3 .6-1 1.2-2.2 1.2-4C18 6 16 3 12 3z" stroke="#0a0a12" stroke-width="1.4" fill="rgba(10,10,18,0.15)"/><circle cx="10" cy="10.5" r="0.9" fill="#0a0a12"/><circle cx="14" cy="10.5" r="0.9" fill="#0a0a12"/></svg>
+              </div>
+              <div class="brand-text">
+                <h1>Nocta</h1>
+                <p>local · private · offline-ready</p>
+              </div>
             </div>
-            <div class="brand-text">
-              <h1>Nocta</h1>
-              <p>local · private · offline-ready</p>
+            <div class="header-actions">
+              <div class="select-wrap header-select">
+                <label for="modelSelect" class="visually-hidden">Model</label>
+                <select id="modelSelect" aria-label="Choose model">
+                  <option value="">loading models…</option>
+                </select>
+              </div>
+              <button class="refresh-btn" id="refreshBtn" title="Refresh model list" aria-label="Refresh model list">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+              </button>
+              <div class="status" title="Connection status">
+                <span class="dot checking" id="statusDot"></span>
+                <span class="status-text" id="statusText">checking…</span>
+              </div>
             </div>
           </div>
-          <div class="header-actions">
-            <div class="status" title="Connection status">
-              <span class="dot checking" id="statusDot"></span>
-              <span class="status-text" id="statusText">checking…</span>
+          <div class="header-row header-metrics">
+            <div class="metrics-bar is-empty" id="metricsBar" aria-live="polite" title="Live model stats">
+              <span class="metric model" id="metricModel">
+                <span class="dot"></span>
+                <span class="label">Model</span>
+                <span class="value">—</span>
+              </span>
+              <span class="metric" id="metricRam">
+                <span class="dot"></span>
+                <span class="label">RAM</span>
+                <span class="value">—</span>
+              </span>
+              <span class="metric" id="metricSpeed">
+                <span class="dot"></span>
+                <span class="label">Speed</span>
+                <span class="value">—</span>
+              </span>
+              <span class="metric context" id="metricContext">
+                <span class="dot"></span>
+                <span class="label">Ctx</span>
+                <span class="value">—</span>
+              </span>
             </div>
           </div>
         </header>
-
-        <div class="modelbar">
-          <label for="modelSelect">MODEL</label>
-          <div class="select-wrap">
-            <select id="modelSelect">
-              <option value="">loading models…</option>
-            </select>
-          </div>
-          <button class="refresh-btn" id="refreshBtn" title="Refresh model list" aria-label="Refresh model list">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
-          </button>
-        </div>
-        <div class="model-badge" id="modelBadge" aria-live="polite"></div>
 
         <div class="error-banner" id="errorBanner"></div>
 
@@ -1236,7 +1291,6 @@ const el = {
   sendBtn: document.getElementById('sendBtn'),
   modelSelect: document.getElementById('modelSelect'),
   refreshBtn: document.getElementById('refreshBtn'),
-  modelBadge: document.getElementById('modelBadge'),
   statusDot: document.getElementById('statusDot'),
   statusText: document.getElementById('statusText'),
   errorBanner: document.getElementById('errorBanner'),
@@ -1262,6 +1316,11 @@ const el = {
   sidebarCollapse: document.getElementById('sidebarCollapse'),
   toast: document.getElementById('toast'),
   modal: document.getElementById('modal'),
+  metricsBar: document.getElementById('metricsBar'),
+  metricModel: document.getElementById('metricModel'),
+  metricRam: document.getElementById('metricRam'),
+  metricSpeed: document.getElementById('metricSpeed'),
+  metricContext: document.getElementById('metricContext'),
   modalTitle: document.getElementById('modalTitle'),
   modalBody: document.getElementById('modalBody'),
   modalCancel: document.getElementById('modalCancel'),
@@ -1284,7 +1343,7 @@ const el = {
   voiceStatus: document.getElementById('voiceStatus'),
 };
 
-let state = { chats: [], activeId: null, theme: 'dark', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434' };
+let state = { chats: [], activeId: null, theme: 'dark', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
@@ -1912,6 +1971,105 @@ async function loadModels(silent){
   }
 }
 
+// Live metrics bar — RAM, context window, current speed. Pulls from /api/ps and
+// /api/show, paints into the four slots in the .metrics-bar under the input.
+// All fetches are soft: failures just leave "—" in the slot.
+async function refreshMetrics(){
+  if(!el.metricsBar) return;
+  const model = state.activeModel || el.modelSelect.value;
+  if(!model){
+    paintMetrics({ model: null, ram: 0, vram: 0, context: 0 });
+    return;
+  }
+  // RAM/vram come from /api/ps (only present for loaded models) — if the model
+  // isn't loaded yet, fall back to the disk size from /api/show so the bar
+  // still shows *something*.
+  let ram = 0, vram = 0, context = 0;
+  try{
+    const psRes = await fetch(ollamaBase() + '/api/ps', { signal: AbortSignal.timeout(2500) });
+    if(psRes.ok){
+      const ps = await psRes.json();
+      const entry = (ps.models || []).find(m => m.name === model);
+      if(entry){
+        ram = entry.size || 0;
+        vram = entry.size_vram || 0;
+      }
+    }
+  }catch(_){ /* soft */ }
+  try{
+    const showRes = await fetch(ollamaBase() + '/api/show', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+      signal: AbortSignal.timeout(2500)
+    });
+    if(showRes.ok){
+      const info = await showRes.json();
+      // context_length lives under the architecture prefix in model_info
+      // (e.g. llama.context_length, qwen2.context_length). Walk the keys.
+      const mi = info.model_info || {};
+      for(const k of Object.keys(mi)){
+        if(/(?:^|\.)context_length$/.test(k) && typeof mi[k] === 'number'){
+          context = mi[k];
+          break;
+        }
+      }
+      // If the model isn't loaded, fall back to its on-disk size for RAM.
+      if(!ram && info.details && info.details.parameter_size){
+        // size_vram == 0 means CPU-only — surface the disk footprint so the
+        // bar reads sensibly while the model is unloaded.
+        const inst = state.models.find(m => m.name === model);
+        if(inst && inst.size) ram = inst.size;
+      }
+    }
+  }catch(_){ /* soft */ }
+  state.metrics = { ram, vram, context, lastUpdated: Date.now() };
+  paintMetrics({ model, ram, vram, context });
+}
+
+// Render the four slots. modelName, ram (bytes), vram (bytes), context (tokens).
+// Pass model=null to reset to placeholders.
+function paintMetrics(m){
+  if(!el.metricsBar) return;
+  const v = m || {};
+  const modelName = v.model || state.activeModel || '';
+  // Model name — strip the boring ":latest" suffix and clip long ones.
+  const pretty = modelName
+    ? humaniseModel(modelName, state.models.find(x => x.name === modelName) || { name: modelName }).display
+    : '—';
+  el.metricModel.querySelector('.value').textContent = pretty;
+  el.metricModel.title = modelName || '';
+
+  // RAM: prefer VRAM (actual GPU usage) over disk size when loaded; otherwise
+  // show the on-disk size and label it as "model weight".
+  let ramLabel = '—';
+  if(v.vram && v.vram > 0){
+    ramLabel = formatBytes(v.vram) + ' GPU';
+    el.metricRam.title = formatBytes(v.vram) + ' on GPU';
+  } else if(v.ram && v.ram > 0){
+    ramLabel = formatBytes(v.ram);
+    el.metricRam.title = formatBytes(v.ram) + ' loaded into memory';
+  } else if(modelName){
+    ramLabel = 'unloaded';
+    el.metricRam.title = 'Model isn\'t loaded in memory yet';
+  } else {
+    el.metricRam.title = '';
+  }
+  el.metricRam.querySelector('.value').textContent = ramLabel;
+
+  // Context window: only meaningful once we've seen /api/show succeed.
+  if(v.context && v.context > 0){
+    el.metricContext.querySelector('.value').textContent = v.context.toLocaleString();
+    el.metricContext.title = 'Max context window: ' + v.context.toLocaleString() + ' tokens';
+  } else {
+    el.metricContext.querySelector('.value').textContent = '—';
+    el.metricContext.title = '';
+  }
+
+  // Dim the bar until at least the model name resolves.
+  el.metricsBar.classList.toggle('is-empty', !modelName);
+}
+
 // Render the model dropdown from state.models + the static catalog.
 //   - catalogOnly=true  → Ollama is offline; show every catalog entry with size=0.
 //   - catalogOnly=false → Ollama is online; show installed models first, then un-installed catalog entries as suggestions.
@@ -1949,7 +2107,6 @@ function populateModelDropdown(catalogOnly){
   state.activeModel = el.modelSelect.value;
   el.sendBtn.disabled = !state.activeModel;
   saveState();
-  updateModelBadge();
 }
 
 // Turn raw model names into something readable: "llama3.2:3b-instruct-q4_K_M" → "Llama 3.2 · 3B Instruct · Q4_K_M".
@@ -1973,30 +2130,11 @@ function humaniseModel(name, model){
   return { display, family, size, quant, tag };
 }
 
-// Render the active model badge with friendly name + parameter size + quantization + size on disk.
-function updateModelBadge(){
-  const badge = el.modelBadge;
-  if(!badge) return;
-  const name = el.modelSelect.value;
-  if(!name){ badge.innerHTML = ''; badge.style.display = 'none'; return; }
-  const model = state.models.find(m => m.name === name);
-  if(!model){ badge.innerHTML = ''; badge.style.display = 'none'; return; }
-  const h = humaniseModel(name, model);
-  const sizeStr = model.size ? formatBytes(model.size) : '';
-  // Strip "latest" tag noise; promote useful info instead.
-  const tag = h.tag && h.tag !== 'latest' ? h.tag : '';
-  const parts = ['<span class="pill-row">'];
-  parts.push('<span class="mb-dot" aria-hidden="true"></span>');
-  parts.push('<span class="mb-name" title="' + escapeHtml(name) + '">' + escapeHtml(h.display) + '</span>');
-  if(h.size)            parts.push('<span class="mb-sep">·</span><span class="mb-tag">' + escapeHtml(h.size) + '</span>');
-  if(h.quant)           parts.push('<span class="mb-sep">·</span><span class="mb-tag quant">' + escapeHtml(h.quant) + '</span>');
-  else if(tag)          parts.push('<span class="mb-sep">·</span><span class="mb-tag">' + escapeHtml(tag) + '</span>');
-  if(sizeStr)           parts.push('<span class="mb-sep">·</span><span class="mb-size">' + escapeHtml(sizeStr) + '</span>');
-  parts.push('</span>');
-  badge.innerHTML = parts.join('');
-  badge.style.display = '';
-  // Reflect active model on the dropdown chrome too (subtle ring).
-  if(el.modelSelect.parentElement) el.modelSelect.parentElement.classList.add('has-model');
+// Reflect active model on the dropdown chrome — subtle ring around the picker.
+function applyModelRing(){
+  if(el.modelSelect && el.modelSelect.parentElement){
+    el.modelSelect.parentElement.classList.toggle('has-model', !!state.activeModel);
+  }
 }
 
 function formatBytes(n){
@@ -2185,6 +2323,27 @@ function paintStreamingStats(bubble, text, evalCount, startTs){
   const tps = (tokens / elapsed).toFixed(1);
   slot.textContent = '· ' + elapsed.toFixed(1) + 's · ' + tps + ' t/s';
   slot.title = tokens + ' tokens in ' + elapsed.toFixed(2) + 's';
+
+  // Mirror the live numbers into the persistent metrics bar so users see
+  // the model "doing something" even between messages.
+  if(el.metricSpeed){
+    el.metricSpeed.querySelector('.value').textContent = tps + ' t/s';
+    el.metricSpeed.title = tokens.toLocaleString() + ' tokens in ' + elapsed.toFixed(2) + 's';
+    el.metricSpeed.classList.add('live');
+  }
+  if(el.metricContext){
+    // We don't know the prompt size mid-stream, so show "tokens so far" with
+    // context for context — finaliseReply replaces this with the real numbers.
+    el.metricContext.querySelector('.value').textContent = tokens.toLocaleString() + ' / ' + (state.metrics.context || '—').toLocaleString();
+    el.metricContext.title = 'Tokens generated so far vs. context window';
+  }
+}
+
+// Drop the .live indicator from the metrics bar after a stream completes and
+// re-pull the canonical numbers from Ollama (model may now be loaded).
+function settleMetricsAfterStream(){
+  if(el.metricSpeed) el.metricSpeed.classList.remove('live');
+  refreshMetrics();
 }
 
 
@@ -2343,6 +2502,10 @@ async function sendMessage(text, opts){
     el.sendBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></svg>';
     el.sendBtn.disabled = false;
     el.input.focus();
+    // Stream finished — refresh RAM/context since the model is now loaded
+    // and drop the .live pulsing indicators from the metrics bar.
+    if(el.metricSpeed) el.metricSpeed.classList.remove('live');
+    refreshMetrics();
   }
 }
 
@@ -2421,7 +2584,8 @@ el.refreshBtn.addEventListener('click', () => loadModels());
 el.modelSelect.addEventListener('change', () => {
   state.activeModel = el.modelSelect.value;
   saveState();
-  updateModelBadge();
+  applyModelRing();
+  refreshMetrics();
 });
 el.attachBtn.addEventListener('click', () => el.fileInput.click());
 el.fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
@@ -2591,12 +2755,18 @@ populateModelDropdown(true);
 })();
 
 loadModels();
+refreshMetrics();
 // Background poll for model list refreshes. Skipped while a chat reply is
 // streaming: Ollama can be slow to answer /api/tags while it's busy on
 // /api/chat, and any failure here would flip the UI into the offline
 // state and wipe the installed-models list (showing "not installed"
 // for the very model that's currently replying).
-setInterval(() => { if(!isStreaming) loadModels(true); }, 15000);
+setInterval(() => {
+  if(!isStreaming){
+    loadModels(true);
+    refreshMetrics();
+  }
+}, 15000);
 
 // Boot reveal — flip the body opacity once the JS has wired up. Done with
 // rAF + a small grace so fonts don't punch a layout shift on first swap.
