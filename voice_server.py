@@ -43,8 +43,12 @@ import io
 import logging
 import os
 import struct
+import ssl
+import subprocess
 import sys
+import tempfile
 import threading
+import urllib.request
 import wave
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -134,7 +138,6 @@ def _decode_audio_to_pcm16(audio_bytes: bytes, src_hint: str = "") -> tuple[byte
     """
     # 1) Try ffmpeg first — it handles webm/opus/m4a/ogg in one go.
     try:
-        import subprocess, tempfile
         with tempfile.NamedTemporaryFile(suffix=Path(src_hint).suffix or ".bin", delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
@@ -243,7 +246,7 @@ def _stt_app() -> FastAPI:
 # ─────────────────────────────────────────────────────────────────────────────
 # /speak — text to speech via piper
 # ─────────────────────────────────────────────────────────────────────────────
-def _ssl_context():
+def _ssl_context() -> tuple[ssl.SSLContext, bool]:
     """
     Build an SSL context that can actually verify huggingface.co.
 
@@ -258,24 +261,23 @@ def _ssl_context():
          user can still get TTS working without a working CA store.
     Returns (ctx, insecure_fallback: bool).
     """
-    import ssl as _ssl
     # 1. certifi — almost always present because faster-whisper / piper pull it in
     try:
         import certifi
-        ctx = _ssl.create_default_context(cafile=certifi.where())
+        ctx = ssl.create_default_context(cafile=certifi.where())
         return ctx, False
     except ImportError:
         pass
     # 2. truststore — uses the OS keychain (PEP 543)
     try:
         import truststore  # type: ignore
-        ctx = truststore.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+        ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         return ctx, False
     except ImportError:
         pass
     # 3. Default — works on most Linux + Homebrew Python
     try:
-        ctx = _ssl.create_default_context()
+        ctx = ssl.create_default_context()
         return ctx, False
     except Exception:
         pass
@@ -285,13 +287,36 @@ def _ssl_context():
         "no CA bundle found (install `certifi`); falling back to UNVERIFIED TLS. "
         "Downloads will work but cannot be authenticated."
     )
-    ctx = _ssl._create_unverified_context()  # noqa: SLF001 — intentional fallback
+    ctx = ssl._create_unverified_context()  # noqa: SLF001 — intentional fallback
     return ctx, True
+
+
+def _piper_voice_candidates(voice: str, base_override: str) -> list[str]:
+    """Mirror download_voice.py: primary `…/<short>/<quality>/<name>` and a legacy fallback."""
+    if base_override:
+        return [base_override.rstrip("/")]
+    parts = voice.split("-")
+    is_us = len(parts) >= 3 and parts[0] == "en" and parts[1] == "US"
+    quality = parts[-1] if len(parts) >= 2 else "medium"
+    if is_us:
+        short = "-".join(parts[2:-1])
+    elif len(parts) >= 3:
+        short = parts[1]
+    else:
+        short = voice
+    primary = (
+        f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"en/en_US/{short}/{quality}/{voice}"
+    )
+    fallback = (
+        f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"en/en_US/{voice.split('en_US-')[-1].split('-', 1)[0]}/{voice}"
+    )
+    return [primary, fallback]
 
 
 def _download(url: str, dest: Path, ctx) -> None:
     """Stream `url` to `dest` with progress logging. Overwrites atomically."""
-    import urllib.request
     tmp = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "nocta-voice-server/1.0"})
     log.info("downloading %s -> %s", url, dest.name)
@@ -323,44 +348,7 @@ def _ensure_piper_voice():
     # Allow users to override the URLs entirely (e.g. for self-hosted mirrors).
     # PIPER_VOICE_URL is the base prefix WITHOUT the .onnx / .onnx.json suffix.
     base_override = os.environ.get("PIPER_VOICE_URL", "").strip()
-
-    # Mirror setup.sh's URL convention:
-    #   en/en_US/<name_short>/<quality>/<name>
-    # e.g. en_US-amy-medium -> en/en_US/amy/medium/en_US-amy-medium
-    # We split the voice name into a "short" part (amy) and a "quality"
-    # part (medium/low). Fallback candidates are tried in order.
-    if base_override:
-        candidates = [base_override.rstrip("/")]
-    else:
-        # The HF layout is `en/en_US/<short>/<quality>/<name>`; quality is
-        # always the LAST dash-segment and short is everything after `en_US-`.
-        parts = PIPER_VOICE.split("-")
-        if len(parts) >= 3 and parts[0] == "en" and parts[1] == "US":
-            quality = parts[-1]
-            short = "-".join(parts[2:-1])
-            primary = (
-                f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-                f"en/en_US/{short}/{quality}/{PIPER_VOICE}"
-            )
-        else:
-            # Best-effort for voices that don't follow the en_US-<name>-<q> pattern.
-            quality = parts[-1] if len(parts) >= 2 else "medium"
-            short = parts[1] if len(parts) >= 3 else PIPER_VOICE
-            primary = (
-                f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-                f"en/en_US/{short}/{quality}/{PIPER_VOICE}"
-            )
-        candidates = [
-            primary,
-            # Fallback for older layouts that omit the quality subdir.
-            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-            f"en/en_US/{PIPER_VOICE.split('en_US-')[-1].split('-', 1)[0]}/{PIPER_VOICE}",
-        ]
-
-    try:
-        import urllib.request  # noqa: F401  (just to fail fast on exotic envs)
-    except ImportError:
-        raise HTTPException(500, "piper voice missing and urllib unavailable; restore the file manually")
+    candidates = _piper_voice_candidates(PIPER_VOICE, base_override)
 
     ctx, insecure = _ssl_context()
     last_err = None
@@ -520,10 +508,9 @@ def main():
     # Warm the models on startup so the first user request doesn't pay the load cost.
     if "--no-warmup" not in sys.argv:
         def warm():
-            try:
-                _whisper.get() if _whisper._loader is not None else None
-            except Exception as e:
-                log.warning("whisper warmup failed: %s", e)
+            # Whisper's loader is a no-op stub; the real load happens lazily on
+            # the first /transcribe request via _whisper._model assignment.
+            # We only warm Piper here, since its loader fully populates the model.
             try:
                 _piper.get()
             except Exception as e:

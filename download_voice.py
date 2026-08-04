@@ -65,19 +65,19 @@ def _candidate_urls(voice: str, base_override: str | None) -> list[str]:
     if base_override:
         return [base_override.rstrip("/")]
     parts = voice.split("-")
-    if len(parts) >= 3 and parts[0] == "en" and parts[1] == "US":
-        quality, short = parts[-1], "-".join(parts[2:-1])
-        primary = (
-            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-            f"en/en_US/{short}/{quality}/{voice}"
-        )
+    is_us = len(parts) >= 3 and parts[0] == "en" and parts[1] == "US"
+    quality = parts[-1] if len(parts) >= 2 else "medium"
+    if is_us:
+        short = "-".join(parts[2:-1])
+    elif len(parts) >= 3:
+        short = parts[1]
     else:
-        quality = parts[-1] if len(parts) >= 2 else "medium"
-        short = parts[1] if len(parts) >= 3 else voice
-        primary = (
-            f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-            f"en/en_US/{short}/{quality}/{voice}"
-        )
+        short = voice
+    primary = (
+        f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"en/en_US/{short}/{quality}/{voice}"
+    )
+    # Legacy layout: a few voices live at en/en_US/<lang-token>/<voice>.
     fallback = (
         f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
         f"en/en_US/{voice.split('en_US-')[-1].split('-', 1)[0]}/{voice}"

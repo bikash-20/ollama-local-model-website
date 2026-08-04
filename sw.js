@@ -64,13 +64,6 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-function isOllamaApi(url) {
-  // Only intercept API calls that go through the configured Ollama origin.
-  // We can't know the origin here (it's in localStorage), so we match any
-  // path that contains /api/ on http(s).
-  return url.protocol === "http:" || url.protocol === "https:";
-}
-
 function isCdnAsset(url) {
   return (
     url.hostname === "cdnjs.cloudflare.com" ||

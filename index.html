@@ -618,7 +618,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .code-block code{font-family:'JetBrains Mono',monospace !important;font-size:12.5px;line-height:1.65;}
 
   .katex{font-size:1.04em;}
-  .katex-display{margin:12px 0 !important;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;}
 
   .cursor-blink-inline{display:inline-block;width:7px;height:14px;background:var(--aurora-a);margin-left:2px;vertical-align:text-bottom;animation:blink 0.9s steps(1) infinite;border-radius:1.5px;}
   @keyframes blink{50%{opacity:0;}}
@@ -1163,6 +1162,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   </div>
 
 <script>
+// Storage keys for localStorage persistence.
 const STORE_KEY = 'nocta_state_v1';
 const SETTINGS_KEY = 'nocta_settings_v1';
 // Single source of truth for the current Ollama endpoint. Changes whenever the
@@ -1570,7 +1570,7 @@ function preprocessMarkdown(src){
 // We keep the list generous so we don't miss common ones like \binom, \cdot,
 // \mapsto, or log-ish operators. The full list is a superset of what KaTeX
 // itself supports; we just need at least one hit to fire the wrap heuristic.
-const TEX_CMD = /\\(?:frac|tfrac|dfrac|binom|sqrt|root|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|sum|prod|int|oint|lim|sin|cos|tan|cot|sec|csc|log|ln|exp|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|omicron|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|partial|nabla|forall|exists|nexists|emptyset|cup|cap|subset|supset|subseteq|supseteq|in|notin|to|mapsto|rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow|vec|hat|bar|tilde|overline|underline|widehat|widetilde|mathbf|mathrm|mathit|mathcal|mathfrak|mathbb|mathsf|text|begingroup|endgroup|operatorname|textstyle|displaystyle|scriptstyle|scriptscriptstyle|left|right|big|Big|bigg|Bigg|begin|end|tag|label|hspace|mathrm|text|color|boxed|cancel|fbox|stackrel|overset|underset|substack|stackrel|pmod|mod|bmod|quad|qquad|ldots|cdots|dots|vdots|ddots|circ|bullet|star|dagger|ddagger|amalg|ast|oplus|ominus|otimes|oslash|wr|propto|prec|preceq|succ|succeq|asymp|doteq|cong|bowtie|models|perp|mid|parallel|angle|triangle|square|lozenge|blacksquare|clubsuit|diamondsuit|heartsuit|spadesuit|suit|hbar|ell|hbar|imath|jmath|Re|Im|surd|prime|backprime|wp|mho)/;
+const TEX_CMD = /\\(?:frac|tfrac|dfrac|binom|sqrt|root|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|sum|prod|int|oint|lim|sin|cos|tan|cot|sec|csc|log|ln|exp|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|omicron|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|partial|nabla|forall|exists|nexists|emptyset|cup|cap|subset|supset|subseteq|supseteq|in|notin|to|mapsto|rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow|vec|hat|bar|tilde|overline|underline|widehat|widetilde|mathbf|mathrm|mathit|mathcal|mathfrak|mathbb|mathsf|text|begingroup|endgroup|operatorname|textstyle|displaystyle|scriptstyle|scriptscriptstyle|left|right|big|Big|bigg|Bigg|begin|end|tag|label|hspace|color|boxed|cancel|fbox|stackrel|overset|underset|substack|pmod|mod|bmod|quad|qquad|ldots|cdots|dots|vdots|ddots|circ|bullet|star|dagger|ddagger|amalg|ast|oplus|ominus|otimes|oslash|wr|propto|prec|preceq|succ|succeq|asymp|doteq|cong|bowtie|models|perp|mid|parallel|angle|triangle|square|lozenge|blacksquare|clubsuit|diamondsuit|heartsuit|spadesuit|suit|hbar|ell|imath|jmath|Re|Im|surd|prime|backprime|wp|mh)/;
 // TEX_SYM: unicode math symbols that the model might emit verbatim.
 const TEX_SYM = /[∑∏∫√∂∇∞≈≠≤≥±∓→←↑↓∈∉⊂⊃∪∩·×÷]/;
 // Implicit-math signal: things like x^2, a_n, x_i that only make sense as LaTeX
@@ -2187,6 +2187,7 @@ function paintStreamingStats(bubble, text, evalCount, startTs){
   slot.title = tokens + ' tokens in ' + elapsed.toFixed(2) + 's';
 }
 
+
 function clearPendingImage(){
   pendingImage = null;
   el.imagePreview.style.display = 'none';
@@ -2208,6 +2209,19 @@ function handleFile(file){
     el.attachBtn.classList.add('active');
   };
   reader.readAsDataURL(file);
+}
+
+// Common finalisation for both natural-stream-end and AbortError paths:
+// renders the markdown, persists the chat, updates the sidebar list, paints
+// streaming stats, and (optionally) speaks the reply.
+function finaliseReply(bubble, chat, text, evalCount, streamStart){
+  renderContent(bubble, text, false);
+  chat.messages.push({ role: 'assistant', content: text, time: nowTime() });
+  touchChat(chat);
+  saveState();
+  renderChatList();
+  paintStreamingStats(bubble, text, evalCount, streamStart);
+  voiceSpeakAssistant(text, bubble);
 }
 
 async function sendMessage(text, opts){
@@ -2313,22 +2327,10 @@ async function sendMessage(text, opts){
         }catch(_){}
       }
     }
-    renderContent(bubble, fullReply || '_(empty response)_', false);
-    chat.messages.push({ role: 'assistant', content: fullReply, time: nowTime() });
-    touchChat(chat);
-    saveState();
-    renderChatList();
-    paintStreamingStats(bubble, fullReply, evalCount, streamStart);
-    voiceSpeakAssistant(fullReply, bubble);
+    finaliseReply(bubble, chat, fullReply || '_(empty response)_', evalCount, streamStart);
   }catch(err){
     if(err.name === 'AbortError'){
-      renderContent(bubble, fullReply || '_(stopped)_', false);
-      chat.messages.push({ role: 'assistant', content: fullReply || '_(stopped)_', time: nowTime() });
-      touchChat(chat);
-      saveState();
-      renderChatList();
-      paintStreamingStats(bubble, fullReply, evalCount, streamStart);
-      voiceSpeakAssistant(fullReply, bubble);
+      finaliseReply(bubble, chat, fullReply || '_(stopped)_', evalCount, streamStart);
     } else {
       bubble.innerHTML = '<div style="color:var(--danger)">Couldn\'t get a response — the local server may have stopped.</div>';
       showError('Something went wrong talking to Ollama. Check that <code>ollama serve</code> is still running.');
@@ -2527,6 +2529,7 @@ el.prefsSave.addEventListener('click', async () => {
   showToast('Preferences saved');
   loadModels(true);
 });
+// Prefs modal handlers are attached above (openPrefs/closePrefs/testOllamaUrl).
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
     el.input.value = chip.dataset.prompt;
@@ -2668,10 +2671,8 @@ let voiceMediaRecorder = null;
 let voiceMediaStream = null;
 let voiceChunks = [];
 let voiceRecordingStart = 0;
-let voiceSilenceTimer = null;
 let voiceLastBubble = null;
 let voiceAudio = null;
-let voicePrimed = false;
 let voiceCtx = null;       // shared AudioContext for TTS playback
 let voiceSource = null;    // current AudioBufferSourceNode, so we can stop it
 const VOICE_SILENCE_MS = 1500;   // auto-stop after ~1.5s of quiet
@@ -2718,7 +2719,6 @@ function primeAudioForTTS(){
     if(voiceCtx.state === 'suspended'){
       voiceCtx.resume().catch(() => {});
     }
-    voicePrimed = true;
   }catch(_){ /* Web Audio unavailable — fall through, <audio> still works */ }
 }
 
@@ -2768,6 +2768,7 @@ async function startVoiceRecording(){
   voiceMediaRecorder.start(250);
 
   // Auto-enable read-aloud for this session if a TTS endpoint is configured.
+  // Reuses the settings/persistence helpers already defined above.
   try{
     if(settings.ttsUrl && !settings.speakerOn){
       settings.speakerOn = true;
@@ -2868,12 +2869,10 @@ async function onVoiceRecordingStop(){
 }
 
 async function voiceSpeakAssistant(text, bubble){
-  console.log('[TTS] enter — speakerOn:', settings.speakerOn, 'ttsUrl:', settings.ttsUrl, 'text len:', (text||'').length);
-  if(!settings.speakerOn){ console.log('[TTS] early-return: speaker off'); return; }
-  if(!settings.ttsUrl){ console.log('[TTS] early-return: no ttsUrl'); showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
+  if(!settings.speakerOn) return;
+  if(!settings.ttsUrl){ showError('Set a Text-to-Speech endpoint in <strong>Preferences → Voice</strong> first.'); return; }
   const clean = (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#>*_~]/g, ' ').replace(/\s+/g, ' ').trim();
-  console.log('[TTS] cleaned text len:', clean.length, 'voiceCtx:', !!voiceCtx, 'ctxState:', voiceCtx && voiceCtx.state);
-  if(!clean){ console.log('[TTS] early-return: empty after cleanup'); return; }
+  if(!clean) return;
 
   // Stop any previous TTS so replies don't queue up.
   if(voiceSource){ try{ voiceSource.stop(); }catch(_){ } voiceSource = null; }
@@ -2882,16 +2881,13 @@ async function voiceSpeakAssistant(text, bubble){
   if(voiceLastBubble) voiceLastBubble.classList.add('tts-playing');
 
   try{
-    console.log('[TTS] POST →', settings.ttsUrl);
     const r = await fetch(settings.ttsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: clean })
     });
-    console.log('[TTS] fetch status:', r.status, 'content-type:', r.headers.get('content-type'));
     if(!r.ok) throw new Error('TTS responded with ' + r.status);
     const buf = await r.arrayBuffer();
-    console.log('[TTS] audio bytes:', buf.byteLength);
     if(!buf.byteLength) throw new Error('TTS returned empty audio');
 
     // Prefer Web Audio (token survives the user-gesture window once we've
@@ -2899,24 +2895,20 @@ async function voiceSpeakAssistant(text, bubble){
     // somehow unavailable.
     if(voiceCtx){
       try{
-        console.log('[TTS] decoding with Web Audio…');
         const audioBuf = await voiceCtx.decodeAudioData(buf.slice(0));
-        console.log('[TTS] decoded — duration:', audioBuf.duration.toFixed(2), 's');
         const src = voiceCtx.createBufferSource();
         src.buffer = audioBuf;
         src.connect(voiceCtx.destination);
         voiceSource = src;
         src.onended = () => {
-          console.log('[TTS] playback ended');
           if(voiceSource === src) voiceSource = null;
           if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
           voiceLastBubble = null;
         };
         src.start(0);
-        console.log('[TTS] src.start(0) called — should be audible now');
         return;
-      }catch(decodeErr){
-        console.warn('[TTS] Web Audio decode failed, falling back to <audio>:', decodeErr);
+      }catch(_){
+        // Fall through to <audio> fallback below.
       }
     }
 
@@ -2951,7 +2943,6 @@ async function voiceSpeakAssistant(text, bubble){
       }
     }
   }catch(err){
-    console.error('[TTS] caught error:', err);
     if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing');
     voiceLastBubble = null;
     const msg = (err && err.message) || 'unknown';
@@ -2982,7 +2973,6 @@ if(el.speakerBtn){
     updateVoiceUI();
     if(settings.speakerOn) primeAudioForTTS();
     if(!settings.speakerOn){
-      voicePrimed = false;
       if(voiceSource){ try{ voiceSource.stop(); }catch(_){} voiceSource = null; }
       if(voiceAudio){ try{ voiceAudio.pause(); }catch(_){} voiceAudio = null; if(voiceLastBubble) voiceLastBubble.classList.remove('tts-playing'); }
     }
