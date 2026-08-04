@@ -821,9 +821,19 @@ the **Clear all chats** button in the sidebar footer.
    `OLLAMA_ORIGINS=https://bikash-20.github.io` and re-run
    `./start-nocta.sh`.
 3. **Firewall** — see the firewall note above for macOS.
-4. **Mixed content** — if the page is served over `https://`, Ollama
-   must be reachable over `https://` too. Easiest fix: open the HTML
-   file directly (`file://`) or serve it over plain HTTP.
+4. **Mixed content** (most common cause of "Ollama server not detected"
+   on the hosted PWA) — if the page is served over `https://` (e.g.
+   `https://bikash-20.github.io/...`), the browser will refuse to make
+   any subresource request to `http://localhost:11434` even when
+   Ollama is running. The `fetch` rejects with `TypeError: Failed to
+   fetch` and the Nocta banner says "Ollama server not detected" —
+   misleading, because Ollama is fine. Easiest fixes, in order:
+   - Open `index.html` directly from disk (`file://`) — works on
+     `localhost` with no config.
+   - Put a local HTTPS reverse proxy in front of Ollama and point
+     Nocta at the `https://` URL via Preferences.
+   - As a dev-only workaround, allow-list the origin in Chrome via
+     `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
 
 ### Math shows as raw text
 

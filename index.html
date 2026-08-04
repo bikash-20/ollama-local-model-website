@@ -783,6 +783,12 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   [data-theme="light"] .error-banner.persistent{background:rgba(13,148,136,0.06);border-color:rgba(13,148,136,0.25);color:#0f766e;}
   .offline-msg{flex:1;min-width:200px;font-size:12.5px;line-height:1.5;}
   .offline-msg strong{font-weight:600;margin-right:6px;}
+  .offline-reason{
+    margin-top:6px;padding-top:6px;border-top:1px dashed currentColor;
+    font-size:11.5px;opacity:0.85;line-height:1.5;
+  }
+  .offline-reason code{font-size:11px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.08);}
+  [data-theme="light"] .offline-reason code{background:rgba(0,0,0,0.06);}
   .offline-actions{display:flex;gap:6px;flex-shrink:0;}
   .offline-btn{
     background:transparent;border:1px solid currentColor;border-radius:7px;
@@ -1702,13 +1708,17 @@ function showError(html){
 }
 function hideError(){ el.errorBanner.style.display = 'none'; el.errorBanner.classList.remove('persistent'); }
 
-function showPersistentOffline(){
+function showPersistentOffline(reason){
+  const reasonHtml = reason
+    ? '<div class="offline-reason">' + reason + '</div>'
+    : '';
   el.errorBanner.classList.add('persistent');
   el.errorBanner.innerHTML =
     '<button class="close-err" aria-label="dismiss">×</button>' +
     '<div class="offline-msg">' +
       '<strong>Ollama server not detected.</strong> ' +
       '<span>Everything still works locally — start the server when you want to chat.</span>' +
+      reasonHtml +
     '</div>' +
     '<div class="offline-actions">' +
       '<button class="offline-btn primary" id="retryOllama">↻ Retry</button>' +
@@ -1718,8 +1728,45 @@ function showPersistentOffline(){
   el.errorBanner.querySelector('.close-err').onclick = hideError;
   document.getElementById('retryOllama').onclick = () => { hideError(); loadModels(false); };
   document.getElementById('howToStart').onclick = () => {
-    showError('Run <code>ollama serve</code> in your terminal. Then come back and click <strong>Retry</strong>. New to Ollama? Visit <code>ollama.com</code> to install.');
+    if(reason && /mixed.content|https.*http/i.test(reason)){
+      showError('This page is loaded over <code>https://</code>, so your browser blocks requests to <code>http://localhost:11434</code> (mixed content). Open <code>index.html</code> directly from disk, or put a local HTTPS reverse proxy in front of Ollama.');
+    } else {
+      showError('Run <code>ollama serve</code> in your terminal. Then come back and click <strong>Retry</strong>. New to Ollama? Visit <code>ollama.com</code> to install.');
+    }
   };
+}
+
+// Produce a short, human-readable explanation of why a fetch to Ollama
+// failed. The goal is to disambiguate "Ollama isn't running" from "your
+// browser refused to even try" — they look identical in the network
+// panel otherwise.
+function offlineReason(err){
+  try {
+    const pageHttps = location.protocol === 'https:';
+    const url = ollamaBase();
+    const urlHttp = /^http:\/\//i.test(url);
+
+    // Mixed content: https:// page trying to talk to http:// Ollama.
+    if(pageHttps && urlHttp){
+      return 'This page is loaded over <code>https://</code>, so your browser blocks requests to <code>' + url + '</code> (mixed content). Open <code>index.html</code> directly from disk, or serve Ollama over HTTPS.';
+    }
+
+    // Common fetch-failure shapes that aren't really Ollama's fault.
+    const msg = (err && (err.message || String(err))) || '';
+    if(/Failed to fetch|NetworkError|Load failed/i.test(msg)){
+      if(pageHttps) {
+        return 'The browser refused the network request before it left your machine. If this page is hosted, it\'s almost certainly mixed-content blocking — see above.';
+      }
+      return 'The browser could not reach <code>' + url + '</code>. Is <code>ollama serve</code> running?';
+    }
+    if(err && err.name === 'AbortError'){
+      return 'The request to <code>' + url + '</code> timed out. Ollama may be busy generating.';
+    }
+    if(/403/.test(msg)){
+      return 'Ollama answered with <code>403 Forbidden</code>. Your <code>OLLAMA_ORIGINS</code> allow-list doesn\'t include this page\'s origin — add it and restart Ollama.';
+    }
+  } catch(_) { /* fall through */ }
+  return null;
 }
 
 function setOnline(isOnline, stateName){
@@ -1779,7 +1826,7 @@ async function loadModels(silent){
     // Ollama unreachable. Show the catalog as a "what you could install" list.
     state.models = [];
     populateModelDropdown(true);
-    showPersistentOffline();
+    showPersistentOffline(offlineReason(err));
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
   }
@@ -2346,12 +2393,26 @@ function closePrefs(){ el.prefsModal.classList.remove('show'); }
 async function testOllamaUrl(url){
   const u = (url || '').trim().replace(/\/+$/, '');
   if(!/^https?:\/\//i.test(u)) throw new Error('URL must start with http:// or https://');
+
+  // Surface the most common blocked-by-the-browser case up front: an
+  // https:// page trying to reach an http:// Ollama is mixed content
+  // and Chrome will refuse without a prefetch or the dev-flag allow-list.
+  if(location.protocol === 'https:' && /^http:\/\//i.test(u)){
+    throw new Error('Mixed content: this page is https:// and the URL is http://. Browsers block this. Open index.html from disk, or serve Ollama over HTTPS.');
+  }
+
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4000);
   try{
     const r = await fetch(u + '/api/tags', { signal: ctrl.signal });
     if(!r.ok) throw new Error('Server responded with ' + r.status);
     return true;
+  } catch(e){
+    if(e && e.name === 'AbortError') throw new Error('Timed out after 4s — is ollama running and reachable at ' + u + '?');
+    if(e && /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')){
+      throw new Error('Browser blocked or could not reach ' + u + ' (often a mixed-content block on https:// pages, or ollama not running)');
+    }
+    throw e;
   } finally { clearTimeout(t); }
 }
 
