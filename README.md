@@ -16,6 +16,7 @@
 
 ## What's new
 
+-  **Color themes.** Pick from six WhatsApp/Messenger-style accent themes — Aurora, Ocean, Mint, Sunset, Lavender, and Rose — in **Preferences → Color theme**. The whole UI recolors live, in both dark and light mode, and your choice is remembered. See [Preferences and settings](#preferences-and-settings).
 -  **Local voice input and output.** Talk to your model and have it talk back — speech-to-text via faster-whisper, text-to-speech via Piper, both running entirely on your own machine. See [Voice input and output](#voice-input-and-output-local).
 -  **PWA install confirmed working on macOS** (Safari → File → Add to Dock) as well as Chrome/Edge/Brave on desktop, Android, and iOS. Nocta now runs as a real standalone app with its own icon and window — not just a browser tab.
 
@@ -405,6 +406,7 @@ never heard of the family before.
 ### UI and theming
 
 - Dark and light mode toggle (persisted)
+- Six color themes — Aurora, Ocean, Mint, Sunset, Lavender, Rose — with a WhatsApp/Messenger-style swatch picker in Preferences (persisted, live-switchable, in both dark and light mode)
 - Mobile-friendly layout with collapsible sidebar and overlay
 - Collapsible sidebar — keep only the chat on screen when you need room
 - Boot loader skeleton — the page paints fast, hydration happens after
@@ -449,13 +451,14 @@ to bottom):
 5. **Clear all chats**
 
 Click the **Preferences** row (the gear icon) to open the settings
-modal. There are three core settings, plus two for voice:
+modal. There are four core settings, plus two for voice:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Server URL | Where to find Ollama. Use `http://host:port`. | `http://localhost:11434` |
 | System prompt | Prepended to every new chat as the `system` role. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
+| Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, or Rose. Pick a swatch and the app recolors instantly. | Aurora |
 | Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |
 | Voice (TTS) endpoint | Where your local text-to-speech server lives. Leave blank to hide the speaker icon. | _(empty)_ |
 
