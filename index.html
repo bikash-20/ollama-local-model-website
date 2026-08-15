@@ -60,6 +60,7 @@
     --danger:#ff8a8a;
     --ok:#5eead4;
     --warn:#fbbf24;
+    --accent:#7c9cff;
     --shadow-lg:0 30px 80px -20px rgba(0,0,0,0.7), 0 8px 32px -8px rgba(0,0,0,0.4);
     --radius-lg:24px;
     --radius-md:14px;
@@ -79,6 +80,7 @@
     --text-low:#7a768a;
     --user-tint:rgba(124,156,255,0.12);
     --user-border:rgba(124,156,255,0.35);
+    --accent:#4f46e5;
     --shadow-lg:0 20px 60px -20px rgba(60,50,120,0.18), 0 4px 20px -4px rgba(60,50,120,0.10);
   }
   *{box-sizing:border-box;}
@@ -111,6 +113,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.92);opacity:.7}}
   button{font-family:inherit;}
   ::selection{background:rgba(124,156,255,0.35);color:#fff;}
+  [data-theme="light"] ::selection{background:rgba(99,102,241,0.28);color:#0f0f23;}
 
   .aurora{
     position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
@@ -227,6 +230,8 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .chat-list::-webkit-scrollbar{width:6px;}
   .chat-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:10px;}
   .chat-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.18);}
+  [data-theme="light"] .chat-list::-webkit-scrollbar-thumb{background:rgba(15,15,40,0.14);}
+  [data-theme="light"] .chat-list::-webkit-scrollbar-thumb:hover{background:rgba(15,15,40,0.24);}
   .chat-search{
     display:flex;align-items:center;gap:7px;
     margin:8px 10px 4px;padding:7px 10px;
@@ -252,6 +257,12 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   }
   .chat-item:hover{background:var(--glass-hover);color:var(--text-hi);}
   .chat-item.active{background:var(--glass-strong);color:var(--text-hi);border-color:var(--glass-border);}
+  /* Active chat gets a soft accent edge so it reads instantly at a glance. */
+  .chat-item.active::before{
+    content:'';position:absolute;left:-1px;top:20%;bottom:20%;width:3px;border-radius:3px;
+    background:linear-gradient(180deg, var(--aurora-a), var(--aurora-b));
+    box-shadow:0 0 10px rgba(124,156,255,0.5);
+  }
   .chat-item .row1{display:flex;align-items:center;gap:6px;}
   .chat-item .chat-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .chat-item .del-chat{
@@ -459,6 +470,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     transition:all 0.15s ease;
   }
   select:hover{border-color:rgba(255,255,255,0.22);}
+  [data-theme="light"] select:hover{border-color:rgba(15,15,40,0.26);}
   select:focus-visible{border-color:var(--aurora-a);}
   .refresh-btn{
     width:36px;height:36px;border-radius:11px;
@@ -481,9 +493,16 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:10px;}
   .messages::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.18);}
   .messages::-webkit-scrollbar-track{background:transparent;}
+  [data-theme="light"] .messages::-webkit-scrollbar-thumb{background:rgba(15,15,40,0.16);}
+  [data-theme="light"] .messages::-webkit-scrollbar-thumb:hover{background:rgba(15,15,40,0.28);}
 
   .empty-state{margin:auto;text-align:center;color:var(--text-low);max-width:380px;padding:20px;}
-  .empty-state .mark{margin:0 auto 18px;width:60px;height:60px;border-radius:18px;}
+  .empty-state .mark{
+    margin:0 auto 18px;width:60px;height:60px;border-radius:18px;
+    background:linear-gradient(135deg, var(--aurora-a), var(--aurora-b));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 10px 30px -8px rgba(124,156,255,0.55);
+  }
   .empty-state .mark svg{width:30px;height:30px;}
   .empty-state h2{font-family:'Fraunces',serif;font-style:italic;font-weight:400;font-size:22px;color:var(--text-mid);margin:0 0 8px;}
   .empty-state p{font-size:13px;line-height:1.6;margin:0;}
@@ -568,7 +587,8 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .bubble a:hover{border-bottom-color:var(--aurora-a);}
   .bubble strong{color:#fff;font-weight:600;}
   [data-theme="light"] .bubble strong{color:#0f0f23;}
-  .bubble h1,.bubble h2,.bubble h3,.bubble h4{font-family:'Fraunces',serif;font-weight:500;margin:14px 0 8px;line-height:1.3;}
+  .bubble h1,.bubble h2,.bubble h3,.bubble h4{font-family:'Fraunces',serif;font-weight:500;margin:14px 0 8px;line-height:1.3;text-wrap:balance;}
+  .bubble p,.bubble li{text-wrap:pretty;}
   .bubble h1:first-child,.bubble h2:first-child,.bubble h3:first-child,.bubble h4:first-child{margin-top:0;}
   .bubble h1{font-size:20px;}
   .bubble h2{font-size:18px;}
@@ -579,14 +599,33 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .bubble code:not(pre code){background:rgba(255,255,255,0.10);padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:0.86em;color:#ffcf8a;}
   [data-theme="light"] .bubble code:not(pre code){background:rgba(0,0,0,0.07);color:#c2410c;}
 
-  .bubble table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.8px;border-radius:10px;overflow:hidden;display:block;overflow-x:auto;border:1px solid var(--glass-border);}
-  .bubble th,.bubble td{border:1px solid var(--glass-border);padding:8px 12px;text-align:left;white-space:nowrap;}
-  .bubble th{background:rgba(255,255,255,0.08);font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.3px;color:var(--text-mid);text-transform:uppercase;font-weight:600;}
-  .bubble tr:nth-child(even) td{background:rgba(255,255,255,0.025);}
+  /* GFM tables — proper rendering: the <table> keeps its native table layout,
+     stretches to the bubble width, and only scrolls horizontally when the
+     columns are genuinely wider than the bubble (no wrapper div needed).
+     border-collapse:separate + per-cell borders let the rounded corners clip
+     cleanly under overflow. Long cell text wraps; alignment markers from the
+     markdown source are honoured via the align attribute. */
+  .bubble table{display:block;overflow-x:auto;overflow-y:auto;width:max-content;min-width:100%;max-width:100%;margin:12px 0;font-size:13px;line-height:1.55;border:1px solid var(--glass-border);border-radius:12px;background:var(--glass-strong);border-collapse:separate;border-spacing:0;}
+  .bubble th,.bubble td{border-right:1px solid var(--glass-border);border-bottom:1px solid var(--glass-border);padding:9px 13px;text-align:left;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;}
+  .bubble th:last-child,.bubble td:last-child{border-right:none;}
+  .bubble tr:last-child td{border-bottom:none;}
+  .bubble thead th{background:linear-gradient(135deg, rgba(124,156,255,0.14), rgba(185,140,255,0.14));font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.4px;color:var(--text-mid);text-transform:uppercase;font-weight:600;white-space:nowrap;vertical-align:middle;}
+  .bubble tbody tr:nth-child(even){background:rgba(255,255,255,0.03);}
+  [data-theme="light"] .bubble tbody tr:nth-child(even){background:rgba(15,15,40,0.035);}
+  .bubble tbody tr{transition:background 0.12s ease;}
+  .bubble tbody tr:hover{background:rgba(124,156,255,0.08);}
+  .bubble th[align="center"],.bubble td[align="center"]{text-align:center;}
+  .bubble th[align="right"],.bubble td[align="right"]{text-align:right;}
+  .bubble td code{white-space:nowrap;}
+  @media (max-width:600px){.bubble table{font-size:12.5px;} .bubble th,.bubble td{padding:7px 10px;}}
 
-  .code-block{margin:10px 0;border-radius:12px;overflow:hidden;border:1px solid var(--glass-border);background:#0d1117;}
+  .code-block{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid var(--glass-border);background:#0d1117;}
+  [data-theme="light"] .code-block{background:#f6f8fa;border-color:rgba(15,15,40,0.14);}
   .code-header{display:flex;justify-content:space-between;align-items:center;padding:7px 14px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--glass-border);}
-  .code-lang{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-low);letter-spacing:0.5px;text-transform:lowercase;}
+  [data-theme="light"] .code-header{background:rgba(15,15,40,0.04);border-bottom-color:rgba(15,15,40,0.10);}
+  .code-lang{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--text-low);letter-spacing:0.6px;text-transform:uppercase;}
+  .code-lang::before{content:'';width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg, var(--aurora-a), var(--aurora-c));box-shadow:0 0 6px rgba(94,234,212,0.5);opacity:0.85;}
+  [data-theme="light"] .code-lang{color:var(--text-mid);}
   .copy-btn{
     background:none;border:1px solid var(--glass-border);
     color:var(--text-mid);
@@ -596,12 +635,41 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     display:flex;align-items:center;gap:5px;
   }
   .copy-btn:hover{background:rgba(255,255,255,0.1);color:#fff;}
+  [data-theme="light"] .copy-btn:hover{background:rgba(15,15,40,0.07);color:#0f0f23;}
   .copy-btn.copied{color:var(--ok);border-color:rgba(94,234,212,0.4);background:rgba(94,234,212,0.08);}
   .copy-btn svg{width:11px;height:11px;}
   .code-block pre{margin:0;padding:14px 16px;overflow-x:auto;background:transparent !important;}
   .code-block pre::-webkit-scrollbar{height:6px;}
   .code-block pre::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:10px;}
-  .code-block code{font-family:'JetBrains Mono',monospace !important;font-size:12.5px;line-height:1.65;}
+  [data-theme="light"] .code-block pre::-webkit-scrollbar-thumb{background:rgba(15,15,40,0.18);}
+  .code-block code{font-family:'JetBrains Mono',monospace !important;font-size:12.5px;line-height:1.65;color:#abb2bf;}
+  [data-theme="light"] .code-block code{color:#24292f;}
+  /* Theme-aware syntax palette. The CDN atom-one-dark sheet is a nice-to-have;
+     these rules win by cascade (they live later in <head>) and guarantee the
+     code is coloured even when the CDN is slow, blocked, or offline — and they
+     adapt to light mode, which the CDN sheet never did. */
+  .code-block .hljs{color:#abb2bf;background:transparent;}
+  .code-block .hljs-comment,.code-block .hljs-quote{color:#7f848e;font-style:italic;}
+  .code-block .hljs-keyword,.code-block .hljs-selector-tag,.code-block .hljs-doctag,.code-block .hljs-template-tag,.code-block .hljs-meta .hljs-keyword{color:#c678dd;}
+  .code-block .hljs-string,.code-block .hljs-regexp,.code-block .hljs-addition{color:#98c379;}
+  .code-block .hljs-number,.code-block .hljs-literal,.code-block .hljs-symbol,.code-block .hljs-bullet{color:#d19a66;}
+  .code-block .hljs-title,.code-block .hljs-title.class_,.code-block .hljs-title.function_,.code-block .hljs-section{color:#61afef;}
+  .code-block .hljs-attr,.code-block .hljs-attribute,.code-block .hljs-variable,.code-block .hljs-template-variable,.code-block .hljs-type,.code-block .hljs-selector-class,.code-block .hljs-selector-id,.code-block .hljs-selector-attr,.code-block .hljs-selector-pseudo,.code-block .hljs-class{color:#e06c75;}
+  .code-block .hljs-built_in,.code-block .hljs-builtin-name,.code-block .hljs-name,.code-block .hljs-meta{color:#e5c07b;}
+  .code-block .hljs-deletion{color:#e06c75;}
+  .code-block .hljs-link{color:#61afef;text-decoration:underline;}
+  .code-block .hljs-emphasis{font-style:italic;}
+  .code-block .hljs-strong{font-weight:600;}
+  [data-theme="light"] .code-block .hljs{color:#24292f;background:transparent;}
+  [data-theme="light"] .code-block .hljs-comment,[data-theme="light"] .code-block .hljs-quote{color:#6e7781;font-style:italic;}
+  [data-theme="light"] .code-block .hljs-keyword,[data-theme="light"] .code-block .hljs-selector-tag,[data-theme="light"] .code-block .hljs-doctag,[data-theme="light"] .code-block .hljs-template-tag,[data-theme="light"] .code-block .hljs-meta .hljs-keyword{color:#cf222e;}
+  [data-theme="light"] .code-block .hljs-string,[data-theme="light"] .code-block .hljs-regexp,[data-theme="light"] .code-block .hljs-addition{color:#0a3069;}
+  [data-theme="light"] .code-block .hljs-number,[data-theme="light"] .code-block .hljs-literal,[data-theme="light"] .code-block .hljs-symbol,[data-theme="light"] .code-block .hljs-bullet{color:#0550ae;}
+  [data-theme="light"] .code-block .hljs-title,[data-theme="light"] .code-block .hljs-title.class_,[data-theme="light"] .code-block .hljs-title.function_,[data-theme="light"] .code-block .hljs-section{color:#8250df;}
+  [data-theme="light"] .code-block .hljs-attr,[data-theme="light"] .code-block .hljs-attribute,[data-theme="light"] .code-block .hljs-variable,[data-theme="light"] .code-block .hljs-template-variable,[data-theme="light"] .code-block .hljs-type,[data-theme="light"] .code-block .hljs-selector-class,[data-theme="light"] .code-block .hljs-selector-id,[data-theme="light"] .code-block .hljs-selector-attr,[data-theme="light"] .code-block .hljs-selector-pseudo,[data-theme="light"] .code-block .hljs-class{color:#953800;}
+  [data-theme="light"] .code-block .hljs-built_in,[data-theme="light"] .code-block .hljs-builtin-name,[data-theme="light"] .code-block .hljs-name,[data-theme="light"] .code-block .hljs-meta{color:#0550ae;}
+  [data-theme="light"] .code-block .hljs-deletion{color:#953800;}
+  [data-theme="light"] .code-block .hljs-link{color:#8250df;}
 
   .katex{font-size:1.04em;}
 
@@ -1528,6 +1596,22 @@ function renderMessages(){
   scrollToBottom();
 }
 
+// The Clipboard API is unavailable on some file:// or older setups — fall back
+// to a hidden textarea + execCommand so the copy button always works.
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly','');
+  ta.style.cssText = 'position:fixed;top:-999px;left:-999px;opacity:0;';
+  document.body.appendChild(ta);
+  try{
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    if(document.execCommand('copy')) done();
+  }catch(_){}
+  document.body.removeChild(ta);
+}
+
 function decorateCodeBlocks(container){
   container.querySelectorAll('pre').forEach(pre => {
     if(pre.parentElement.classList.contains('code-block')) return;
@@ -1546,11 +1630,17 @@ function decorateCodeBlocks(container){
     btn.className = 'copy-btn';
     btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>copy</span>';
     btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(code.innerText).then(() => {
+      const text = code.innerText;
+      const ok = () => {
         btn.classList.add('copied');
         btn.querySelector('span').textContent = 'copied';
         setTimeout(() => { btn.classList.remove('copied'); btn.querySelector('span').textContent = 'copy'; }, 1200);
-      });
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(ok).catch(() => fallbackCopy(text, ok));
+      } else {
+        fallbackCopy(text, ok);
+      }
     });
     header.appendChild(label);
     header.appendChild(btn);
@@ -1591,18 +1681,30 @@ function preprocessMarkdown(src){
           rows.push(lines[j].trim());
           j++;
         }
-        // Pad ragged rows so every row has the same column count as the header.
-        const colCount = (header.replace(/^\||\|$/g,'').match(/\|/g) || []).length + 1;
-        const pad = (r) => {
-          const cells = r.replace(/^\||\|$/g,'').split('|');
+        // Normalise ragged rows so every row lines up with the header, and
+        // keep the alignment markers (:---, ---:, :---:) the model declared
+        // instead of flattening every column to left-aligned.
+        const splitCells = (r) => r.replace(/^\||\|$/g,'').split('|').map(c => c.trim());
+        const headerCells = splitCells(header);
+        const sepCells    = splitCells(sep);
+        const colCount = Math.max(headerCells.length, sepCells.length);
+        const alignSep = (s) => {
+          const m = /^:?-+:?$/.exec(s);
+          if(!m) return '---';
+          if(s.startsWith(':') && s.endsWith(':')) return ':---:';
+          if(s.endsWith(':')) return '---:';
+          if(s.startsWith(':')) return ':---';
+          return '---';
+        };
+        const padCells = (cells) => {
           while(cells.length < colCount) cells.push('');
           return '| ' + cells.join(' | ') + ' |';
         };
-        const normHeader = pad(header);
-        const normSep    = '| ' + Array(colCount).fill('---').join(' | ') + ' |';
+        const normHeader = padCells(headerCells);
+        const normSep    = '| ' + Array.from({length: colCount}, (_, k) => alignSep(sepCells[k] || '---')).join(' | ') + ' |';
         out.push(normHeader);
         out.push(normSep);
-        rows.forEach(r => out.push(pad(r)));
+        rows.forEach(r => out.push(padCells(splitCells(r))));
         i = j - 1;
         continue;
       }
@@ -1770,6 +1872,19 @@ function wrapBareLatex(src){
   return src;
 }
 
+// hljs is deferred, so it may not be ready when the very first stream
+// finishes. Retry a few times (mirroring the KaTeX retry below) so code
+// blocks always end up coloured — even on a cold first load.
+function tryHighlightBlocks(bubble, attempt){
+  if(typeof hljs !== 'undefined'){
+    bubble.querySelectorAll('pre code').forEach(block => {
+      try{ hljs.highlightElement(block); }catch(_){}
+    });
+    return;
+  }
+  if((attempt || 0) < 15) setTimeout(() => tryHighlightBlocks(bubble, (attempt || 0) + 1), 80);
+}
+
 function renderFinalMarkdown(bubble, text){
   if(!text) { bubble.textContent = ''; return; }
   const src = preprocessMarkdown(text);
@@ -1781,10 +1896,11 @@ function renderFinalMarkdown(bubble, text){
     return;
   }
   bubble.innerHTML = html;
-  if(typeof hljs !== 'undefined'){
-    bubble.querySelectorAll('pre code').forEach(block => { try{ hljs.highlightElement(block); }catch(_){} });
-  }
+  // Structure first, colours second. decorateCodeBlocks must run before
+  // highlighting so a late hljs retry can always find the blocks inside
+  // their .code-block wrappers.
   decorateCodeBlocks(bubble);
+  tryHighlightBlocks(bubble, 0);
   // KaTeX loads with defer and may not be ready at the moment the very first
   // stream finishes. If it isn't ready yet, retry shortly so math still shows.
   const tryRenderMath = () => {
@@ -2150,8 +2266,15 @@ function autoGrow(){
   el.input.style.height = Math.min(el.input.scrollHeight, 180) + 'px';
 }
 
-function scrollToBottom(){
-  requestAnimationFrame(() => { el.messages.scrollTop = el.messages.scrollHeight; });
+function scrollToBottom(instant){
+  requestAnimationFrame(() => {
+    const m = el.messages;
+    // CSS sets scroll-behavior:smooth, which makes per-chunk scrolling lag on
+    // long replies. Jump instantly during a stream; keep smooth for the rest.
+    if(instant) m.style.scrollBehavior = 'auto';
+    m.scrollTop = m.scrollHeight;
+    if(instant) m.style.scrollBehavior = '';
+  });
 }
 
 function showToast(msg, icon){
@@ -2466,26 +2589,36 @@ async function sendMessage(text, opts){
     const decoder = new TextDecoder();
     let buffer = '';
 
+    // One NDJSON line may span multiple network chunks and multiple chunks
+    // may arrive in a single read — accumulate in `buffer` and only treat
+    // complete lines as JSON.
+    const consumeLine = (line) => {
+      if(!line.trim()) return;
+      try{
+        const json = JSON.parse(line);
+        if(json.message && json.message.content){
+          const piece = json.message.content;
+          fullReply += piece;
+          appendStreamingText(bubble, piece);
+          scrollToBottom(true);
+        }
+        if(typeof json.eval_count === 'number') evalCount = json.eval_count;
+      }catch(_){}
+    };
+
     while(true){
       const { value, done } = await reader.read();
       if(done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop();
-      for(const line of lines){
-        if(!line.trim()) continue;
-        try{
-          const json = JSON.parse(line);
-          if(json.message && json.message.content){
-            const piece = json.message.content;
-            fullReply += piece;
-            appendStreamingText(bubble, piece);
-            scrollToBottom();
-          }
-          if(typeof json.eval_count === 'number') evalCount = json.eval_count;
-        }catch(_){}
-      }
+      lines.forEach(consumeLine);
     }
+    // The final chunk usually has no trailing newline, so the last JSON line
+    // (with the tail of the reply) is still sitting in `buffer` — flush the
+    // decoder and process it, or long answers silently lose their ending.
+    buffer += decoder.decode();
+    if(buffer.trim()) buffer.split('\n').forEach(consumeLine);
     finaliseReply(bubble, chat, fullReply || '_(empty response)_', evalCount, streamStart);
   }catch(err){
     if(err.name === 'AbortError'){
@@ -2789,15 +2922,30 @@ if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.p
     navigator.serviceWorker.register('./sw.js').then((reg) => {
       // When a new version is waiting, ask it to take over immediately so
       // users don't have to refresh twice after a deploy.
-      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      let updateRequested = false;
+      const requestTakeover = () => {
+        updateRequested = true;
+        reg.waiting && reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      };
+      if (reg.waiting) requestTakeover();
       reg.addEventListener('updatefound', () => {
         const next = reg.installing;
         if (!next) return;
         next.addEventListener('statechange', () => {
           if (next.state === 'installed' && navigator.serviceWorker.controller) {
-            next.postMessage({ type: 'SKIP_WAITING' });
+            requestTakeover();
           }
         });
+      });
+      // Once the *updated* SW takes control, reload once so the fresh shell
+      // (new HTML/CSS/JS) is what's actually displayed — no manual refresh
+      // needed after an update. First-time installs (no prior SW) don't
+      // trigger this, so first visits stay clean.
+      let reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!updateRequested || reloadedForUpdate) return;
+        reloadedForUpdate = true;
+        window.location.reload();
       });
     }).catch(() => { /* offline or SW blocked — silently degrade */ });
   });

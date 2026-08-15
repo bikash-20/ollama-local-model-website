@@ -27,6 +27,15 @@ const fnSource = m[0];
 const region = html.match(/(\/\*\*[\s\S]*?\*\/)?\s*const\s+TEX_CMD[\s\S]*?function wrapBareLatex[\s\S]*?\n\s{0,2}\}\s*\n/);
 const target = region ? region[0] : fnSource;
 
+// preprocessMarkdown is defined *before* the TEX_CMD consts, so grab it with
+// a dedicated anchored match — it always ends right after `return joined;`.
+const pmMatch = html.match(/function preprocessMarkdown\(src\)\{[\s\S]*?\n  return joined;\n\}/);
+if(!pmMatch){
+  console.error('Could not locate preprocessMarkdown function');
+  process.exit(2);
+}
+const pmSource = pmMatch[0];
+
 // Sandbox: run the script in a minimal global. Strip anything that touches
 // `document` so it can execute safely under Node.
 const noop = () => ({addEventListener: noop, appendChild: noop, removeChild: noop, classList: {add: noop, remove: noop, toggle: noop}, setAttribute: noop, querySelectorAll: () => [], querySelector: () => null, getAttribute: () => null, style: {}, dataset: {}});
@@ -50,10 +59,10 @@ const fakeContext = {
   AbortController,
 };
 const ctx = vm.createContext(fakeContext);
-vm.runInContext(target, ctx);
+vm.runInContext(target + (pmSource ? '\n' + pmSource : ''), ctx);
 
 // Pull out the helpers.
-const {wrapBareLatex} = ctx;
+const {wrapBareLatex, preprocessMarkdown} = ctx;
 
 const cases = [
   {
@@ -185,13 +194,41 @@ solved by elimination`,
         if(/-\s+\$/.test(out)) throw new Error(`list line got wrapped:\n${out}`);
       }
     }
+  },
+  {
+    name: 'ragged table rows are padded to the header column count',
+    fn: 'preprocessMarkdown',
+    input: '| Model | Size | Speed |\n|---|---|---|\n| Llama 3 | 8B |\n| Qwen | 7B | fast |',
+    expect: (out) => {
+      const lines = out.split('\n');
+      const row = lines[2].replace(/^\||\|$/g,'').split('|').map(c => c.trim());
+      if(row.length !== 3 || row[2] !== '') throw new Error(`expected a padded 3-cell row, got: "${lines[2]}"\n--- output ---\n${out}`);
+    }
+  },
+  {
+    name: 'table separator alignment colons survive repair',
+    fn: 'preprocessMarkdown',
+    input: '| Name | Value | Note |\n|:---|:---:|---:|\n| a | b | c |',
+    expect: (out) => {
+      const sep = out.split('\n')[1] || '';
+      if(!sep.includes(':---:') || !sep.includes('---:')) throw new Error(`alignment lost, separator is: "${sep}"\n--- output ---\n${out}`);
+    }
+  },
+  {
+    name: 'table repair keeps math-wrapping out of pipe rows',
+    fn: 'preprocessMarkdown',
+    input: '| a | b |\n|---|---|\n| 1 | 2 |',
+    expect: (out) => {
+      if(out.includes('$')) throw new Error(`table rows got math-wrapped:\n${out}`);
+    }
   }
 ];
 
 let pass = 0, fail = 0;
 for(const c of cases){
   try{
-    const out = wrapBareLatex(c.input);
+    const fn = (c.fn === 'preprocessMarkdown') ? preprocessMarkdown : wrapBareLatex;
+    const out = fn(c.input);
     c.expect(out);
     pass++;
     console.log(`✓ ${c.name}`);
