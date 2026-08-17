@@ -9,7 +9,8 @@
 >
 > The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the lines above didn't work for you.
 
-<img width="1280" height="832" alt="image" src="https://github.com/user-attachments/assets/979ff228-d33d-4e29-b8d5-93bc6a61be77" />
+<img width="1280" height="800" alt="image" src="https://github.com/user-attachments/assets/ff8090f0-a7b6-4a4e-b171-b75fc2d632ca" />
+
 <img width="1280" height="800" alt="image" src="https://github.com/user-attachments/assets/d6988296-035f-40ac-81cb-7de8901e5806" />
 
 
