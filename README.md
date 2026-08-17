@@ -456,7 +456,7 @@ modal. There are four core settings, plus two for voice:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Server URL | Where to find Ollama. Use `http://host:port`. | `http://localhost:11434` |
-| System prompt | Prepended to every new chat as the `system` role. | _(empty)_ |
+| System prompt | Sent as a `system` message ahead of every request in all chats. Edits apply to future turns immediately. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
 | Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, or Rose. Pick a swatch and the app recolors instantly. | Aurora |
 | Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |

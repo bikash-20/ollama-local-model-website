@@ -2682,6 +2682,13 @@ async function sendMessage(text, opts){
     if(m.images && m.images.length) o.images = m.images;
     return o;
   });
+  // Inject the global system prompt as a real `system` message at the front of
+  // every request. Ollama's top-level `system` body field is a no-op on recent
+  // versions (0.30.x ignores it for several model templates, e.g. phi4-mini),
+  // whereas a role:'system' message is honored by every template — so deliver
+  // the prompt the template-native way. Applied per request, which means edits
+  // to the prompt apply to future turns of every chat.
+  if(settings.systemPrompt) apiHistory.unshift({ role: 'system', content: settings.systemPrompt });
 
   const bubble = addRow('assistant', '', true, null, nowTime(), false);
   let fullReply = '';
@@ -2698,7 +2705,6 @@ async function sendMessage(text, opts){
         model: model,
         messages: apiHistory,
         stream: true,
-        ...(settings.systemPrompt ? { system: settings.systemPrompt } : {}),
         ...(typeof settings.temperature === 'number' ? { options: { temperature: settings.temperature } } : {})
       }),
       signal: abortController.signal
