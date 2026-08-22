@@ -1888,6 +1888,15 @@ function wrapBareLatex(src){
     return mathStashKey(stash.length - 1);
   });
 
+  // -------- Pass 0b: convert \(\) / \[\] delimiters to $ / $$ --------
+  // Models like SmolLM3 emit \(…\) for inline math and \[…\] for display.
+  // marked treats \ before punctuation as a markdown escape and strips it,
+  // turning \( into plain ( and \[ into plain [ — so KaTeX never sees the
+  // delimiters.  We convert them to $ and $$ here (after code stashing, so
+  // code blocks are untouched) so marked passes them through verbatim.
+  src = src.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => '$' + inner + '$');
+  src = src.replace(/\\\[[\s\S]*?\\\]/g, m => '$$' + m.slice(2, -2) + '$$');
+
   // -------- Pass 1: multi-line `[ ... ]` block -> $$ ... $$ --------
   // The previous version used `/^\[...\]$/gm` which matched the brackets but
   // then ran a per-line wrap on the inside, splitting `\frac` from `{...}`
