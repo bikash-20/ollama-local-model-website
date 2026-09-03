@@ -12,7 +12,7 @@
  *
  * Bump CACHE_VERSION on any change to app shell HTML/CSS/JS.
  */
-const CACHE_VERSION = "nocta-v6";
+const CACHE_VERSION = "nocta-v7";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const CDN_CACHE = `${CACHE_VERSION}-cdn`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;

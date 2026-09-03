@@ -136,6 +136,34 @@
     --accent:#be185d;
     --user-tint:rgba(190,24,93,0.12); --user-border:rgba(190,24,93,0.40);
   }
+  /* Text-color palettes — independent of the accent theme above. Each preset
+     overrides all three text tokens at once (hi/mid/low). The default preset
+     is the existing dark/light cascade, so leaving data-text unset == Default.
+     Pair these freely with any accent theme. */
+  html[data-text="plum"]{
+    --text-hi:#e8d9ff; --text-mid:#b9a3d8; --text-low:#7a6694;
+  }
+  [data-theme="light"][data-text="plum"]{
+    --text-hi:#2a1742; --text-mid:#5e4577; --text-low:#8c74a8;
+  }
+  html[data-text="slate"]{
+    --text-hi:#dde6f3; --text-mid:#9bb0c8; --text-low:#5e6f85;
+  }
+  [data-theme="light"][data-text="slate"]{
+    --text-hi:#0f1f2e; --text-mid:#34495e; --text-low:#5e6f85;
+  }
+  html[data-text="cream"]{
+    --text-hi:#f5ecd9; --text-mid:#c7b990; --text-low:#8c7a55;
+  }
+  [data-theme="light"][data-text="cream"]{
+    --text-hi:#2a2114; --text-mid:#5e4f30; --text-low:#8c7a55;
+  }
+  html[data-text="sage"]{
+    --text-hi:#d4ead2; --text-mid:#9bb89a; --text-low:#5d7559;
+  }
+  [data-theme="light"][data-text="sage"]{
+    --text-hi:#14241a; --text-mid:#3a5c3d; --text-low:#5d7559;
+  }
   *{box-sizing:border-box;}
 *:focus-visible{outline:2px solid var(--aurora-a);outline-offset:2px;border-radius:6px;}
 html,body{height:100%;}
@@ -1341,6 +1369,10 @@ body.ready{opacity:1;transition:opacity .25s ease;}
       <div class="pref-label"><span>Color theme</span></div>
       <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Color theme"></div>
       <p class="pref-hint">Recolors the whole app — pick the vibe you like.</p>
+
+      <div class="pref-label"><span>Text color</span></div>
+      <div class="theme-grid" id="textThemeGrid" role="radiogroup" aria-label="Text color"></div>
+      <p class="pref-hint">Changes the body-text palette independently of the accent theme. Mix and match freely.</p>
 <div class="pref-grid">
         <label class="pref-label">
           <span>Temperature</span>
@@ -1468,6 +1500,7 @@ const el = {
   prefsBtn: document.getElementById('prefsBtn'),
   prefsModal: document.getElementById('prefsModal'),
   themeGrid: document.getElementById('themeGrid'),
+  textThemeGrid: document.getElementById('textThemeGrid'),
   prefsUrl: document.getElementById('prefsUrl'),
   prefsSystem: document.getElementById('prefsSystem'),
   prefsTemp: document.getElementById('prefsTemp'),
@@ -1484,7 +1517,7 @@ const el = {
   voiceStatus: document.getElementById('voiceStatus'),
 };
 
-let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
+let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
@@ -1544,9 +1577,13 @@ function applyTheme(){
   const light = state.theme === 'light';
   document.documentElement.dataset.theme = light ? 'light' : '';
   document.documentElement.dataset.accent = state.accent || 'aurora';
+  // data-text is independent of the accent picker. Empty string == Default
+  // (the cascade falls through to the dark/light rules in :root).
+  document.documentElement.dataset.text = state.textTheme || '';
   el.darkSwitch.classList.toggle('on', !light);
   el.darkSwitch.setAttribute('aria-checked', String(!light));
   paintThemeSwatches();
+  paintTextSwatches();
 }
 
 // WhatsApp/Messenger-style color themes. The CSS lives in data-accent blocks
@@ -1593,6 +1630,57 @@ function renderThemeSwatches(){
     grid.appendChild(btn);
   });
   paintThemeSwatches();
+}
+
+// Text-color palettes — independent of the accent theme. The CSS lives in
+// html[data-text="..."] blocks in <head>; here we only render the picker
+// and persist the choice. The Default preset uses an empty id, which means
+// "remove the attribute and fall through to the existing dark/light cascade" —
+// no special CSS needed for it.
+const TEXT_THEMES = [
+  { id: '',         name: 'Default', css: 'linear-gradient(135deg,#f3f1fa,#8b87a0)' },
+  { id: 'plum',     name: 'Plum',    css: 'linear-gradient(135deg,#e8d9ff,#7a6694)' },
+  { id: 'slate',    name: 'Slate',   css: 'linear-gradient(135deg,#dde6f3,#5e6f85)' },
+  { id: 'cream',    name: 'Cream',   css: 'linear-gradient(135deg,#f5ecd9,#8c7a55)' },
+  { id: 'sage',     name: 'Sage',    css: 'linear-gradient(135deg,#d4ead2,#5d7559)' },
+];
+
+function paintTextSwatches(){
+  const grid = el.textThemeGrid;
+  if(!grid) return;
+  // Use empty string for the Default preset so a fresh install (no
+  // state.textTheme set) matches the user-visible "no override" state.
+  const current = state.textTheme || '';
+  grid.querySelectorAll('.theme-swatch').forEach(sw => {
+    const active = sw.dataset.text === current;
+    sw.classList.toggle('active', active);
+    sw.setAttribute('aria-checked', String(active));
+  });
+}
+
+function renderTextSwatches(){
+  const grid = el.textThemeGrid;
+  if(!grid) return;
+  grid.innerHTML = '';
+  TEXT_THEMES.forEach(t => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'theme-swatch';
+    btn.dataset.text = t.id;
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', 'false');
+    btn.title = t.name;
+    btn.innerHTML = '<span class="sw-dot" style="background:' + t.css + '"></span><span class="sw-name">' + t.name + '</span>';
+    btn.addEventListener('click', () => {
+      state.textTheme = t.id;
+      applyTheme();
+      saveState();
+      const toast = t.id ? (t.name + ' text applied') : 'Default text applied';
+      showToast(toast);
+    });
+    grid.appendChild(btn);
+  });
+  paintTextSwatches();
 }
 
 function getActiveChat(){
@@ -3002,6 +3090,7 @@ document.addEventListener('keydown', e => {
 loadState();
 applyTheme();
 renderThemeSwatches();
+renderTextSwatches();
 
 // When crossing the 960px breakpoint, the drawer/collapse mechanics differ — reset to a sane default.
 let lastIsMobile = isMobile();
