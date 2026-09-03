@@ -20,6 +20,7 @@
 
 ## What's new
 
+-  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
 -  **Color themes.** Pick from six WhatsApp/Messenger-style accent themes — Aurora, Ocean, Mint, Sunset, Lavender, and Rose — in **Preferences → Color theme**. The whole UI recolors live, in both dark and light mode, and your choice is remembered. See [Preferences and settings](#preferences-and-settings).
 -  **Local voice input and output.** Talk to your model and have it talk back — speech-to-text via faster-whisper, text-to-speech via Piper, both running entirely on your own machine. See [Voice input and output](#voice-input-and-output-local).

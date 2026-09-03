@@ -1892,10 +1892,16 @@ function wrapBareLatex(src){
   // Models like SmolLM3 emit \(…\) for inline math and \[…\] for display.
   // marked treats \ before punctuation as a markdown escape and strips it,
   // turning \( into plain ( and \[ into plain [ — so KaTeX never sees the
-  // delimiters.  We convert them to $ and $$ here (after code stashing, so
+  // delimiters. We convert them to $ and $$ here (after code stashing, so
   // code blocks are untouched) so marked passes them through verbatim.
+  // Display math (`\[...\]`) is padded with newlines so KaTeX treats it as
+  // a true display block rather than inline-style display; without the
+  // padding the rendered expression sits on a single line with no break.
   src = src.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => '$' + inner + '$');
-  src = src.replace(/\\\[[\s\S]*?\\\]/g, m => '$$' + m.slice(2, -2) + '$$');
+  src = src.replace(/\\\[[\s\S]*?\\\]/g, m => {
+    const inner = m.slice(2, -2).replace(/^[ \t]+|[ \t]+$/gm, '').trim();
+    return '$$\n' + inner + '\n$$';
+  });
 
   // -------- Pass 1: multi-line `[ ... ]` block -> $$ ... $$ --------
   // The previous version used `/^\[...\]$/gm` which matched the brackets but
@@ -1934,7 +1940,11 @@ function wrapBareLatex(src){
   // -------- Pass 2: single-line `[ ... ]` with TeX -> $...$ --------
   // Example: "The roots are [ x = \frac{-b...}{2a} ]"
   //                   -> "The roots are $x = \frac{-b...}{2a}$"
-  src = src.replace(/\[(\s[^\[\]\n]*?[A-Za-z\\][^\[\]\n]*?\s)\]/g, (m, inner) => {
+  // Leading/trailing whitespace inside the brackets is OPTIONAL — small
+  // models often emit tight forms like `[\sqrt{2}]` with no padding, and
+  // the previous `\s` requirement caused those to fall through to Pass 4
+  // and wrap the *entire line* in `$...$` (prose and all).
+  src = src.replace(/\[(\s?[^\[\]\n]*?[A-Za-z\\][^\[\]\n]*?\s?)\]/g, (m, inner) => {
     const t = inner.trim();
     if(!TEX_CMD.test(t) && !TEX_SYM.test(t) && !TEX_IMPLICIT.test(t)) return m;
     return '$' + t + '$';
@@ -1958,6 +1968,8 @@ function wrapBareLatex(src){
   // Wrap lines whose trimmed form contains a TeX command and reads as math,
   // not as prose. We skip markdown structure (headings, lists, blockquotes,
   // tables) and skip lines that already have a delimiter.
+  // Leading whitespace is preserved so indented lines (continuation blocks,
+  // nested list items) don't get re-formatted by this pass.
   src = src.split('\n').map(line => {
     const trimmed = line.trim();
     if(!trimmed) return line;
@@ -1969,17 +1981,18 @@ function wrapBareLatex(src){
     if(/^\d+\.\s/.test(trimmed)) return line;              // numbered lists
     if(/^[|`]/.test(trimmed)) return line;                 // blockquote / table
     if(/^>/.test(trimmed)) return line;                    // blockquote
-    const hasTex = TEX_CMD.test(line) || TEX_SYM.test(line);
+    const hasTex = TEX_CMD.test(trimmed) || TEX_SYM.test(trimmed);
     if(!hasTex) return line;
-    const tokens = line.split(/\s+/).filter(Boolean);
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
     if(tokens.length > 14) return line;
-    if(HAS_ENGLISH_WORD.test(line)) return line;
-    return '$' + trimmed + '$';
+    if(HAS_ENGLISH_WORD.test(trimmed)) return line;
+    const indent = line.match(/^\s*/)[0];
+    return indent + '$' + trimmed + '$';
   }).join('\n');
 
   // -------- Pass 5: short implicit-equation lines --------
   // Catches "b^2 - 4ac", "a_n + 1", "n_th = a_n + 1". These have no
-  // \commands but read as LaTeX.
+  // \commands but read as LaTeX. Leading whitespace preserved, same as Pass 4.
   src = src.split('\n').map(line => {
     const trimmed = line.trim();
     if(!trimmed) return line;
@@ -1990,10 +2003,11 @@ function wrapBareLatex(src){
     if(/^[|`]/.test(trimmed)) return line;
     if(/^>/.test(trimmed)) return line;
     if(trimmed.length > 60) return line;
-    if(!TEX_IMPLICIT.test(line)) return line;
+    if(!TEX_IMPLICIT.test(trimmed)) return line;
     if(!EQUATION_LIKE.test(trimmed)) return line;
     if(HAS_ENGLISH_WORD.test(trimmed)) return line;
-    return '$' + trimmed + '$';
+    const indent = line.match(/^\s*/)[0];
+    return indent + '$' + trimmed + '$';
   }).join('\n');
 
   // -------- Pass 6: restore code fences/spans --------

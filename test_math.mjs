@@ -221,6 +221,71 @@ solved by elimination`,
     expect: (out) => {
       if(out.includes('$')) throw new Error(`table rows got math-wrapped:\n${out}`);
     }
+  },
+  // ---- Regression tests for bugs fixed after the original 15 cases ----
+  {
+    name: 'tight single-line bracket [x] wraps only the bracket contents',
+    input: `We get [\\sqrt{2}] is irrational.`,
+    expect: (out) => {
+      // Bug: Pass 4 used to wrap the entire line in $...$ because the
+      // bracket regex required `\s` after `[` and the line fell through.
+      if(!out.includes('$\\sqrt{2}$')) throw new Error(`bracket contents not wrapped: ${out}`);
+      if(out.startsWith('$We')) throw new Error(`entire line was wrapped instead of just the bracket:\n${out}`);
+      if(!out.includes('We get ')) throw new Error(`prose around bracket lost:\n${out}`);
+    }
+  },
+  {
+    name: 'SmolLM-style \\[...\\] produces padded display block',
+    input: `Then we have\n\\[\\frac{a}{b}\\]\nthe next paragraph.`,
+    expect: (out) => {
+      // Bug: Pass 0b used to emit '$$\\frac{a}{b}$$' with no padding,
+      // so KaTeX rendered it as inline-style display. Now padded with \n.
+      if(!/\$\$\n\\frac\{a\}\{b\}\n\$\$/.test(out)) {
+        throw new Error(`expected padded $$ ... $$, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'SmolLM-style \\( ... \\) inline still uses $...$',
+    input: `Inline \\(x^2 + 1\\) math here.`,
+    expect: (out) => {
+      if(!out.includes('$x^2 + 1$')) throw new Error(`inline \(...\) not converted: ${out}`);
+      if(out.includes('\\(')) throw new Error(`\\( ... \\) delimiter survived: ${out}`);
+    }
+  },
+  {
+    name: 'indented bare-math line keeps its leading indent',
+    input: `prose\n   \\frac{a}{b} = 0.5\n   more`,
+    expect: (out) => {
+      // Bug: Pass 4 used to wrap '$' + trimmed + '$', stripping the
+      // leading whitespace. Now we keep the indent.
+      if(!/^   \$\\frac\{a\}\{b\} = 0\.5\$$/m.test(out)) {
+        throw new Error(`indent not preserved, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'ragged table row with no trailing pipe still gets padded',
+    fn: 'preprocessMarkdown',
+    input: '| A | B | C |\n|---|---|---|\n| 1 | 2',
+    expect: (out) => {
+      const lines = out.split('\n');
+      // Row "| 1 | 2" should be padded to 3 cells, then wrapped back to "| 1 | 2 |  |".
+      if(!/^\| 1 \| 2 \|  \|$/.test(lines[2])) {
+        throw new Error(`expected padded 3-cell row, got: "${lines[2]}"\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'ragged table row with no leading pipe still gets padded',
+    fn: 'preprocessMarkdown',
+    input: '| A | B | C |\n|---|---|---|\n1 | 2 | 3',
+    expect: (out) => {
+      const lines = out.split('\n');
+      if(!/^\| 1 \| 2 \| 3 \|$/.test(lines[2])) {
+        throw new Error(`expected row with missing leading pipe to be normalised, got: "${lines[2]}"\n${out}`);
+      }
+    }
   }
 ];
 
