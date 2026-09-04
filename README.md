@@ -8,10 +8,12 @@
 > 4. Want to talk to it out loud instead of typing? See [Voice input and output](#voice-input-and-output-local) below.
 >
 > The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the lines above didn't work for you.
+<img width="1276" height="802" alt="image" src="https://github.com/user-attachments/assets/96cd8927-4235-48d5-be7a-910cd7a7221f" />
 
-<img width="1280" height="800" alt="image" src="https://github.com/user-attachments/assets/ff8090f0-a7b6-4a4e-b171-b75fc2d632ca" />
 
-<img width="1280" height="800" alt="image" src="https://github.com/user-attachments/assets/d6988296-035f-40ac-81cb-7de8901e5806" />
+
+<img width="1276" height="802" alt="image" src="https://github.com/user-attachments/assets/5bfe68ce-d2d0-4018-90a9-1a7b24d8000d" />
+
 
 
 
