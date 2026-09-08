@@ -1,5 +1,6 @@
 # Editor / IDE
 .puku/
+.puku-cli/
 .vscode/
 .idea/
 .DS_Store
@@ -7,11 +8,18 @@
 # OS
 Thumbs.db
 
-# Node (kept here for future expansion; project is currently zero-dep)
+# Node — Playwright smoke tests live under tests/ and need node_modules.
+# The app itself stays zero-build; this only exists to run the test suite.
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# Playwright artifacts (regenerable with `npx playwright install chromium`
+# and `npm test`).
+/playwright-report/
+/test-results/
+/blob-report/
+.playwright/
 # ─────────────────────────────────────────────────────────────────────────────
 # Voice server (added for open-source portability)
 # ─────────────────────────────────────────────────────────────────────────────

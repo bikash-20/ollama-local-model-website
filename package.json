@@ -1,0 +1,12 @@
+{
+  "name": "nocta-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright smoke tests for Nocta. The app itself stays zero-build — this package.json only exists to run the test suite. Run: npm install && npm test",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}

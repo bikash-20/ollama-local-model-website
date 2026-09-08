@@ -193,6 +193,32 @@ def _stt_app() -> FastAPI:
         yield
 
     app = FastAPI(title="Nocta STT", lifespan=lifespan)
+    # CORS: allow any origin.
+    #
+    # Why this is OK for the current threat model:
+    #   • Both endpoints bind to 127.0.0.1 by default, so they are unreachable
+    #     from outside the host machine. CORS only governs what the *browser*
+    #     will let other web pages do; network reachability is governed by the
+    #     bind address, not the Allow-Origin header.
+    #   • /transcribe and /speak have no auth, no persistent state, and no
+    #     side effects beyond "play a sound" or "return text". A malicious
+    #     page that could reach the server could trigger unwanted TTS/STT
+    #     but cannot exfiltrate data, escalate privileges, or persist anything.
+    #   • The README documents this as a LAN tool, and the convenience of
+    #     "open it from anywhere, including the hosted PWA over HTTPS" is
+    #     the whole point.
+    #
+    # When this assumption breaks (review carefully before changing ANY of):
+    #   1. Bind to 0.0.0.0 (TTS_HOST=0.0.0.0) — the server is now reachable
+    #      from the LAN. CORS becomes the only thing standing between a
+    #      coffee-shop Wi-Fi visitor and "make this laptop speak arbitrary
+    #      text at 3am." You probably want to restrict origins and add
+    #      an auth token.
+    #   2. Add a feature that stores transcripts or voice history server-side
+    #      — now /transcribe has data worth exfiltrating, and `*` is wrong.
+    #   3. Expose the server to the public internet — at that point you need
+    #      authentication, rate limiting, and a real origin allow-list. Do
+    #      not just tighten CORS and call it done.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -406,6 +432,10 @@ def _tts_app() -> FastAPI:
         yield
 
     app = FastAPI(title="Nocta TTS", lifespan=lifespan)
+    # Same CORS policy as the STT app — see the long comment block on
+    # _stt_app() above for the full threat model. In short: safe under the
+    # 127.0.0.1 bind + no-server-side-state assumption; review carefully
+    # if you ever expose this on the LAN or add persistent storage.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
