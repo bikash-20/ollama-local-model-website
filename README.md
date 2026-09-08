@@ -25,7 +25,7 @@
 
 ## What's new
 
--  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; FreeLLMAPI chat streaming is a Phase 2 placeholder so the UI is fully testable without standing up the router. See [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
+-  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; FreeLLMAPI chat streaming is a Phase 2 placeholder so the UI is fully testable without standing up the router. The model picker is now backed by the live `/v1/models` response (with a small static catalog as a last-resort fallback) and filters out providers you haven't configured keys for. With 9+ models in play (the FreeLLMAPI case) the picker groups by provider, adds a type-to-filter search box, and shows a 📷 badge on vision-capable models — see [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
 -  **Independent text-color picker.** A second picker in Preferences → Text color lets you choose the body-text palette on its own, decoupled from the accent theme. Five presets ship — Default, Plum, Slate, Cream, Sage — each with its own dark and light variant. Mix and match freely (Ocean accent + Plum text, Rose accent + Slate text, etc.) and both choices are remembered. The accent theme picker is unchanged.
 -  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
@@ -507,16 +507,81 @@ is in a Phase 1 stub:
 
 1. Make sure the FreeLLMAPI router is running and listening on a
    local port (e.g. `localhost:3001`).
-2. Open Nocta **Preferences → Backend** and pick **FreeLLMAPI**.
-3. Fill in the **FreeLLMAPI base URL** (default
-   `http://localhost:3001/v1`) and **API key** (sent as
-   `Authorization: Bearer <key>`).
-4. Click **Save**. The model dropdown re-populates from the router.
+2. **Open Nocta from the same machine the router is on.** This is
+   the most important step — see the [deployment caveat](#freellmapi-deployment-caveat) below.
+3. Open Nocta **Preferences → Backend** and pick **FreeLLMAPI**.
+4. Fill in the **FreeLLMAPI base URL** (default
+   `http://localhost:3001/v1`) and paste your **API key** in the
+   password field. The key is sent as `Authorization: Bearer <key>`
+   on every request and is stored only in this browser's
+   `localStorage`.
+5. Click **Save**. Nocta pings `/v1/models`; on success the model
+   dropdown re-populates from the live response. If the router
+   answers 401, the key is wrong. If the request never reaches the
+   router, see the deployment caveat.
 
-> **Heads-up — mixed content.** If you open Nocta from a hosted
-> `https://` page, your browser blocks `http://localhost:...` requests
-> to the router (mixed-content policy). Open `index.html` from disk,
-> or serve both Nocta and the router over HTTPS.
+#### FreeLLMAPI deployment caveat
+
+The FreeLLMAPI dashboard listens on `http://localhost:3001` and
+**rejects cross-origin requests** (`Cross-Origin-Resource-Policy:
+same-origin`, no `Access-Control-Allow-Origin`). That means Nocta
+**must run from the same origin as the router** to talk to it. Two
+patterns work:
+
+- **Local file** — open `index.html` directly in your browser
+  (`file:///path/to/index.html`). The page is then `file://`, which
+  the dashboard treats as cross-origin — same problem. Use a local
+  HTTP server instead.
+- **Local HTTP server** — run `python3 -m http.server 8000` from the
+  repo folder (or any static server) and visit
+  `http://localhost:8000/`. The browser will let `http://localhost`
+  talk to `http://localhost` (no mixed content, same-origin policy
+  satisfied). **This is the recommended setup for FreeLLMAPI.**
+
+The hosted GitHub Pages URL (`https://bikash-20.github.io/...`)
+will show a "cross-origin blocked" toast and the static catalog will
+appear in the dropdown. That's expected — until the router serves
+over HTTPS or you switch to a local server, the live `/v1/models`
+list isn't reachable from that page. Use the GitHub Pages URL for
+Ollama (which works fine cross-origin), and a local server for
+FreeLLMAPI.
+
+#### What the picker shows you
+
+When the live `/v1/models` response is available:
+
+- One row per chat model. The router itself, embedding, image, and
+  audio models are filtered out — only chat targets appear.
+- Models from providers whose API keys you haven't configured
+  ("Hidden (no keys)" in the dashboard: zhipu, cohere, cloudflare,
+  ollama-cloud, llm7, nvidia, kilo, huggingface, opencode, agnes,
+  aihorde, ainative, aion, bazaarlink, modelscope, nara, navy, ovh,
+  reka, requesty, sealion) are filtered client-side too, so picking
+  one never lands on a "no key configured" error.
+- A vision flag (📷) is shown for vision-capable models; Phase 3's
+  PDF rasterization will use this to decide between image input and
+  text-only extraction.
+
+When 9+ models are available (the FreeLLMAPI case) the picker
+switches into a richer layout:
+
+- **Grouped by provider.** Each provider gets a sticky header so you
+  can scan "Google" or "Anthropic" instead of scrolling through 39+
+  flat rows.
+- **Type-to-filter.** A search box at the top narrows the list as you
+  type — try typing `mistral` to jump straight to the Mistral models
+  even when Anthropic is alphabetically before it. Press `Esc` to
+  close, `Enter` to pick the first match.
+- **Click-outside-to-close.** Pickers follow the standard dropdown
+  contract; the popup also closes if you click anywhere outside.
+
+For 8 or fewer models (the Ollama case, where the picker shows only
+installed + catalog suggestions) it falls back to a flat, ungrouped
+list with no search box — friendlier at that scale.
+
+When the live list isn't reachable (router down, key rejected,
+cross-origin blocked), the small static catalog appears as a
+last-resort fallback so the picker stays usable.
 
 ---
 

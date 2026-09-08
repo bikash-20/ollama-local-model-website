@@ -565,8 +565,181 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .refresh-btn.spin svg{animation:spin 0.7s linear;}
   @keyframes spin{to{transform:rotate(360deg);}}
 
-  /* When a real model is selected, gently ring the dropdown chrome so the connection feels alive. */
-  .select-wrap.has-model select{border-color:color-mix(in srgb, var(--aurora-c) 45%, transparent);box-shadow:0 0 0 3px color-mix(in srgb, var(--aurora-c) 8%, transparent);}
+  /* When a real model is selected, gently ring the dropdown chrome so the connection feels alive.
+     Targets the custom button (.model-trigger) instead of the hidden <select>. */
+  .select-wrap.has-model .model-trigger{
+    border-color:color-mix(in srgb, var(--aurora-c) 45%, transparent);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--aurora-c) 8%, transparent);
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     Custom model dropdown
+     ───────────────────────────────────────────────────────────────────────
+     Replaces the native <select> in the header. The native control was
+     fine for the 3-item Ollama picker, but the FreeLLMAPI integration
+     surfaces 39+ models — at that scale the browser-native dropdown
+     becomes unscannable. This widget adds:
+       • A search box (type-to-filter, keyboard-focusable)
+       • Provider optgroups with sticky headers
+       • Vision-capable badge so users can find image-friendly models
+       • Click-outside-to-close + Escape + keyboard nav (↑↓ Enter)
+     The hidden <input id="modelSelect"> above mirrors state.activeModel
+     so legacy read sites (sendMessage, paintMetrics, etc.) still see a
+     string value at .value. */
+  .model-trigger{
+    /* Mirror the native select's pill chrome exactly so nothing visually
+       shifts at the seam between the old control and this one. */
+    width:100%;min-width:0;max-width:100%;
+    background:var(--glass-strong);
+    border:1px solid var(--glass-border);color:var(--text-hi);
+    padding:9px 34px 9px 14px;border-radius:99px;
+    font-family:'Inter',sans-serif;font-size:15.5px;font-weight:500;
+    cursor:pointer;
+    display:flex;align-items:center;gap:8px;
+    text-align:left;text-overflow:ellipsis;overflow:hidden;
+    transition:all 0.15s ease;
+    -webkit-appearance:none;appearance:none;
+  }
+  .model-trigger:hover{border-color:rgba(255,255,255,0.22);}
+  [data-theme="light"] .model-trigger:hover{border-color:rgba(15,15,40,0.26);}
+  .model-trigger:focus-visible{outline:none;border-color:var(--aurora-a);}
+  .model-trigger[aria-expanded="true"]{
+    border-color:var(--aurora-a);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--aurora-a) 18%, transparent);
+  }
+  .model-trigger-label{
+    flex:1 1 auto;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .model-trigger-caret{
+    flex:0 0 auto;width:12px;height:12px;color:var(--text-mid);
+    transition:transform 0.15s ease;
+  }
+  .model-trigger[aria-expanded="true"] .model-trigger-caret{transform:rotate(180deg);}
+
+  /* Popup panel — anchored under the trigger, sized to feel like a menu. */
+  .model-popup{
+    position:absolute;
+    top:calc(100% + 6px);left:0;right:0;
+    z-index:50;
+    background:var(--glass-strong);
+    border:1px solid var(--glass-border);
+    border-radius:14px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.35),
+               0 0 0 1px color-mix(in srgb, var(--aurora-a) 8%, transparent);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    overflow:hidden;
+    /* Width override: even on narrow phones the picker can be wider
+       than its trigger, so the menu pops at min(420px, viewport - 32). */
+    min-width:280px;
+    max-width:min(420px, calc(100vw - 24px));
+  }
+  /* The HTML `[hidden]` attribute normally sets display:none via the UA
+     stylesheet, but `.model-popup` declares `display:flex` above which
+     wins on specificity. Force-override so toggling .hidden actually
+     hides the menu (and so Playwright's :visible check is accurate). */
+  .model-popup[hidden]{display:none !important;}
+    display:flex;flex-direction:column;
+    max-height:min(60vh, 460px);
+  }
+  .model-popup-search{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--glass-border);
+    color:var(--text-mid);
+    flex:0 0 auto;
+  }
+  .model-popup-search svg{width:15px;height:15px;flex:0 0 auto;}
+  .model-popup-search input{
+    flex:1 1 auto;min-width:0;
+    background:transparent;border:0;outline:none;
+    color:var(--text-hi);
+    font:inherit;font-size:14px;
+  }
+  .model-popup-search input::placeholder{color:var(--text-low);}
+  .model-popup-list{
+    overflow-y:auto;overflow-x:hidden;
+    padding:4px 0 6px;
+    flex:1 1 auto;
+    /* Scrollbar polish — thin and unobtrusive. */
+    scrollbar-width:thin;
+    scrollbar-color:var(--glass-border) transparent;
+  }
+  .model-popup-list::-webkit-scrollbar{width:8px;}
+  .model-popup-list::-webkit-scrollbar-thumb{
+    background:var(--glass-border);border-radius:4px;
+  }
+  .model-popup-empty{
+    padding:18px 14px;
+    color:var(--text-low);font-size:13px;text-align:center;
+    font-style:italic;
+  }
+
+  /* Provider optgroup header — sticky so it stays visible while the
+     user scrolls through long provider lists. */
+  .model-group-label{
+    position:sticky;top:0;
+    padding:8px 14px 4px;
+    font-size:11px;font-weight:600;letter-spacing:0.7px;
+    text-transform:uppercase;
+    color:var(--text-low);
+    background:var(--glass-strong);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    z-index:1;
+    display:flex;align-items:center;gap:6px;
+  }
+  .model-group-label .count{
+    font-weight:500;letter-spacing:0.3px;
+    color:var(--text-low);opacity:0.7;
+    text-transform:none;
+  }
+
+  /* Single row — selectable, with optional vision badge + meta suffix. */
+  .model-row{
+    padding:8px 14px;
+    cursor:pointer;
+    display:flex;align-items:center;gap:10px;
+    font-size:14px;
+    color:var(--text-hi);
+    transition:background 0.08s ease;
+    user-select:none;
+  }
+  .model-row:hover,
+  .model-row.is-focused{
+    background:var(--glass-hover);
+  }
+  .model-row[aria-selected="true"]{
+    background:color-mix(in srgb, var(--aurora-a) 14%, transparent);
+    color:var(--text-hi);
+  }
+  .model-row .name{
+    flex:1 1 auto;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .model-row .meta{
+    flex:0 0 auto;
+    font-size:12px;color:var(--text-low);
+    font-family:'JetBrains Mono',monospace;
+  }
+  .model-row .vision-badge{
+    flex:0 0 auto;
+    display:inline-flex;align-items:center;gap:3px;
+    padding:1px 7px;
+    border-radius:99px;
+    background:color-mix(in srgb, var(--aurora-c) 18%, transparent);
+    color:var(--aurora-c);
+    font-size:10.5px;font-weight:600;letter-spacing:0.3px;
+  }
+  .model-row .vision-badge svg{width:10px;height:10px;}
+  .model-row.not-installed{
+    /* Catalog-only suggestions are dimmed so installed/online models
+       stand out. For FreeLLMAPI we never enter this branch. */
+    color:var(--text-mid);font-style:italic;
+  }
+  .model-row.not-installed .name::before{
+    content:'↓ ';
+    color:var(--text-low);font-style:normal;
+  }
 
   .messages{flex:1;overflow-y:auto;padding:28px 28px 24px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth;}
   .messages::-webkit-scrollbar{width:8px;}
@@ -903,6 +1076,10 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     letter-spacing:0.2px;flex-wrap:wrap;
   }
   .metrics-bar.is-empty{opacity:0.55;}
+  /* Cloud (FreeLLMAPI) backend: RAM is meaningless for remote models,
+     hide the slot entirely. Ctx stays because it's sourced from the
+     model's own context_length metadata and is genuinely useful. */
+  .metrics-bar.backend-cloud #metricRam{display:none;}
   .metrics-bar .metric{
     display:inline-flex;align-items:center;gap:5px;min-width:0;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -1163,7 +1340,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     .brand-text p{display:none;}
     /* Cap the picker on phones so long model tags can't overflow the row. */
     .header-select{flex:1 1 0;max-width:200px;}
-    .header-select select{font-size:14.5px;padding:6px 26px 6px 10px;border-radius:9px;}
+    .header-select .model-trigger{font-size:14.5px;padding:6px 26px 6px 10px;border-radius:9px;}
     .refresh-btn{width:32px;height:32px;border-radius:10px;}
     .refresh-btn svg{width:15px;height:15px;}
     .status{padding:5px 10px;font-size:12.5px;gap:6px;}
@@ -1288,11 +1465,44 @@ body.ready{opacity:1;transition:opacity .25s ease;}
               </div>
             </div>
             <div class="header-actions">
-              <div class="select-wrap header-select">
+              <div class="select-wrap header-select" id="modelSelectWrap">
                 <label for="modelSelect" class="visually-hidden">Model</label>
-                <select id="modelSelect" aria-label="Choose model">
-                  <option value="">loading models…</option>
-                </select>
+                <!-- Hidden <input> mirrors el.modelSelect.value so legacy
+                     read sites (sendMessage, paintMetrics, renderMessage
+                     meta) keep working without rewriting every call site.
+                     The visible chrome is a custom button + popup panel
+                     below, rendered by renderModelDropdown(). -->
+                <input type="hidden" id="modelSelect" value="">
+                <button type="button" id="modelSelectBtn" class="model-trigger"
+                        aria-haspopup="listbox" aria-expanded="false"
+                        aria-label="Choose model">
+                  <span class="model-trigger-label" id="modelSelectLabel">loading models…</span>
+                  <svg class="model-trigger-caret" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round"
+                       aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                <div class="model-popup" id="modelPopup" role="listbox"
+                     aria-label="Available models" hidden>
+                  <div class="model-popup-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round"
+                         stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input type="text" id="modelSearch" placeholder="Filter models…"
+                           autocomplete="off" spellcheck="false"
+                           aria-label="Filter models">
+                  </div>
+                  <div class="model-popup-list" id="modelPopupList" role="presentation">
+                    <!-- rows injected by renderModelDropdown() -->
+                  </div>
+                  <div class="model-popup-empty" id="modelPopupEmpty" hidden>
+                    No models match.
+                  </div>
+                </div>
               </div>
               <button class="refresh-btn" id="refreshBtn" title="Refresh model list" aria-label="Refresh model list">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
@@ -1553,12 +1763,145 @@ const FREELLMAPI_CATALOG = [
   { name: 'grok-4.1-fast-reasoning',        family: 'grok',   parameterSize: '—', quantization: '', format: 'openai', description: 'xAI Grok 4.1 Fast Reasoning.' },
 ];
 
+// Providers that the FreeLLMAPI dashboard lists under "Hidden (no keys)"
+// — i.e. the user has not configured a key for them, so any model routed
+// through them will fail. We never want these in the picker because
+// picking one would just error on every request.
+//
+// Source: FreeLLMAPI dashboard "Hidden (no keys)" section. If /v1/models
+// still includes models from one of these providers, we filter them out
+// client-side as a defense in depth — the server's own filter is the
+// primary mechanism.
+const FREELLMAPI_HIDDEN_PROVIDERS = new Set([
+  'zhipu', 'cohere', 'cloudflare', 'ollama-cloud', 'ollama', 'llm7',
+  'nvidia', 'kilo', 'huggingface', 'opencode', 'agnes', 'aihorde',
+  'ainative', 'aion', 'bazaarlink', 'modelscope', 'nara', 'navy',
+  'ovh', 'reka', 'requesty', 'sealion'
+]);
+
+// Models that should NEVER appear in the picker even if /v1/models
+// returns them. The router name itself (`freellmapi`, `free-llm-api`,
+// `router`) is the most important entry — picking "FreeLLMAPI" as a
+// model would route the request back into the router's own dispatch
+// logic and just error out. We also exclude common non-chat models
+// (embedding, image, audio) by type when the API exposes that.
+const FREELLMAPI_EXCLUDED_MODEL_IDS = new Set([
+  'freellmapi', 'free-llm-api', 'free_llm_api', 'router', 'unified',
+  'auto', 'best'
+]);
+
+// Curated vision-capable model lookup. /v1/models on FreeLLMAPI exposes
+// `supportsVision` per the dashboard's data shape, but if the API ever
+// drops that field or returns a stale response, Phase 3's PDF
+// rasterization logic needs a fallback so it doesn't silently break.
+//
+// IMPORTANT: this is a conservative *positive* list. Models NOT in this
+// table are assumed non-vision. False positives (claiming vision when
+// the model doesn't support it) would silently send image bytes that
+// the model can't decode; false negatives (claiming no vision when the
+// model supports it) just fall back to text-extraction, which is safe.
+// So when in doubt, leave the model OUT of this table.
+const FREELLMAPI_VISION_MODELS = new Set([
+  // Google Gemini
+  'gemini-3-flash-preview', 'gemini-3.1-flash-lite-thinking',
+  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-pro',
+  'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash',
+  // OpenAI
+  'gpt-5.4', 'gpt-5', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo',
+  'gpt-4-vision-preview', 'o1', 'o1-mini', 'o3', 'o3-mini',
+  // Anthropic
+  'claude-3.5-sonnet', 'claude-3-opus', 'claude-3-sonnet',
+  'claude-3-haiku', 'claude-4-opus', 'claude-4-sonnet',
+  // Mistral (recent vision-capable)
+  'mistral-medium-3.5', 'pixtral-12b', 'pixtral-large',
+  // Meta Llama 3.2 vision
+  'llama-3.2-90b-vision', 'llama-3.2-11b-vision',
+  // xAI Grok 2 vision
+  'grok-2-vision', 'grok-4.1-fast-reasoning',
+  // Open-source vision models surfaced via the router
+  'llava:13b', 'llava-llama3:8b', 'minicpm-v', 'qwen2-vl-72b',
+  'qwen2-vl-7b', 'internvl2'
+]);
+
+// Resolve vision capability for a model id. Trust the API when present;
+// fall back to the curated table; otherwise assume no vision so the
+// safe text-extraction path runs in Phase 3.
+function isFreellmapiVisionModel(modelId, apiFlag){
+  if(apiFlag === true) return true;
+  if(apiFlag === false) return false;
+  if(!modelId) return false;
+  // Strip provider prefix like "google/gemini-3-flash-preview" if the
+  // router ever uses namespaced ids.
+  const bare = String(modelId).split('/').pop();
+  return FREELLMAPI_VISION_MODELS.has(bare) ||
+         FREELLMAPI_VISION_MODELS.has(String(modelId));
+}
+
+// Map a single /v1/models entry to the shared state.models shape used
+// by populateModelDropdown. Defensive parser — accepts several
+// response shapes since we can't observe the server directly without
+// a valid key.
+//
+// FreeLLMAPI model metadata shape (inferred from the dashboard JS):
+//   {
+//     id: 'gemini-3-flash-preview',      // chat target
+//     object: 'model',
+//     owned_by: 'google',                 // provider
+//     supportsVision: true,               // vision flag (optional)
+//     context_length: 1000000,            // optional
+//     type: 'chat' | 'embedding' | ...   // optional
+//   }
+function mapFreellmapiModel(raw){
+  if(!raw || typeof raw !== 'object') return null;
+  const id = raw.id || raw.name || '';
+  if(!id) return null;
+  if(FREELLMAPI_EXCLUDED_MODEL_IDS.has(String(id).toLowerCase())) return null;
+
+  // Provider extraction. The dashboard uses `owned_by` (OpenAI spec)
+  // but some routers expose `provider` or nest under a `meta` block.
+  const provider = String(
+    raw.owned_by || raw.provider || (raw.meta && raw.meta.provider) || ''
+  ).toLowerCase().trim();
+  if(provider && FREELLMAPI_HIDDEN_PROVIDERS.has(provider)){
+    // Provider has no keys configured — picking this model would error.
+    return null;
+  }
+
+  // Type filter. Some routers expose embedding/image models in /v1/models;
+  // we only want chat models in the picker. If type is missing we
+  // assume chat (per OpenAI convention).
+  const type = String(raw.type || raw.object || 'chat').toLowerCase();
+  if(type === 'embedding' || type === 'image' || type === 'audio') return null;
+
+  // Vision flag. API value wins; otherwise curated table.
+  const vision = isFreellmapiVisionModel(id, raw.supportsVision || raw.vision);
+
+  return {
+    name: id,
+    family: provider || String(id).split('-')[0] || 'remote',
+    parameterSize: raw.context_length ? raw.context_length.toLocaleString() + ' ctx' : '—',
+    quantization: '',
+    format: 'openai',
+    description: raw.description || (provider ? provider + ' / ' + id : id),
+    provider: provider,
+    vision: vision,
+    type: type,
+    rpd: raw.rpd || null  // rate-limit per day, populated later from /api/fallback/rate-limit-usage if available
+  };
+}
+
 const el = {
   messages: document.getElementById('messages'),
   emptyState: document.getElementById('emptyState'),
   input: document.getElementById('input'),
   sendBtn: document.getElementById('sendBtn'),
   modelSelect: document.getElementById('modelSelect'),
+  modelSelectBtn: document.getElementById('modelSelectBtn'),
+  modelSelectLabel: document.getElementById('modelSelectLabel'),
+  modelPopup: document.getElementById('modelPopup'),
+  modelPopupList: document.getElementById('modelPopupList'),
+  modelPopupEmpty: document.getElementById('modelPopupEmpty'),
+  modelSearch: document.getElementById('modelSearch'),
   refreshBtn: document.getElementById('refreshBtn'),
   statusDot: document.getElementById('statusDot'),
   statusText: document.getElementById('statusText'),
@@ -2442,9 +2785,15 @@ async function loadOllamaModels(silent){
 }
 
 async function loadFreellmapiModels(silent){
-  // Probe /v1/models (OpenAI-compatible). On 404/parse failure fall back
-  // to FREELLMAPI_CATALOG. On network failure treat as offline (mirror
-  // Ollama's persistent banner behavior).
+  // Probe /v1/models (OpenAI-compatible). The endpoint returns the
+  // dashboard's full model catalog when reachable; on any failure we
+  // fall back to the small static catalog so the picker stays usable
+  // in environments where the router is unreachable (different
+  // machine, CORS-blocked hosted page, missing key, etc.).
+  //
+  // On failure we surface a *specific* toast — "CORS blocked", "key
+  // rejected", "router not running" — so the user knows whether to
+  // fix the URL, the key, or the deployment mode.
   if(!silent) el.refreshBtn.classList.add('spin');
   setOnline(false, 'checking');
   const base = (state.freellmapiUrl || 'http://localhost:3001/v1').replace(/\/+$/, '');
@@ -2453,25 +2802,43 @@ async function loadFreellmapiModels(silent){
   try{
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 3000);
-    const res = await fetch(base + '/models', { headers: headers, signal: ctrl.signal });
+    let res;
+    try{
+      res = await fetch(base + '/models', { headers: headers, signal: ctrl.signal });
+    } catch(networkErr){
+      // Same diagnostic logic as testBackendUrl, but expressed as a
+      // short toast instead of an Error.
+      const sameOrigin = (() => {
+        try { return new URL(base).origin === location.origin; } catch(_) { return false; }
+      })();
+      if(location.protocol === 'https:' && /^http:\/\//i.test(base)){
+        throw new Error('mixed content: page is https://, router is http://');
+      }
+      if(!sameOrigin){
+        throw new Error('cross-origin: page is at ' + location.origin + ', router is at ' + (() => { try { return new URL(base).origin; } catch(_) { return base; } })() + ' — open index.html from the same origin as the router');
+      }
+      throw new Error('router unreachable: ' + (networkErr.message || networkErr));
+    }
     clearTimeout(tid);
-    if(!res.ok) throw new Error('bad response');
+    if(!res.ok){
+      if(res.status === 401 || res.status === 403){
+        throw new Error('auth: server returned ' + res.status + ' — API key rejected');
+      }
+      throw new Error('server returned ' + res.status);
+    }
     const data = await res.json();
     setOnline(true, 'ok');
     hideError();
     // OpenAI /v1/models returns { data: [{ id, ... }] }. Map each entry
     // to the shared state.models shape so populateModelDropdown works.
+    // Vision flag and provider come from the response when present;
+    // otherwise we fall back to a curated lookup so Phase 3 (PDF
+    // rasterization) doesn't silently break on an unknown model.
     const list = Array.isArray(data.data) ? data.data : [];
-    state.models = list.map(m => ({
-      name: m.id || m.name || '',
-      size: 0, // remote models have no local size
-      family: (m.id || '').split('-')[0],
-      parameterSize: '—',
-      quantization: '',
-      format: 'openai'
-    }));
+    state.models = list
+      .map(m => mapFreellmapiModel(m))
+      .filter(m => m && m.name);
     if(state.models.length === 0){
-      // Endpoint replied but with no models — fall back to static catalog.
       state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
       showToast('FreeLLMAPI returned no models — using static catalog.');
       populateModelDropdown(false, FREELLMAPI_CATALOG);
@@ -2484,13 +2851,10 @@ async function loadFreellmapiModels(silent){
       setOnline(true, 'ok');
       return;
     }
-    // Couldn't reach /v1/models. Fall back to the static catalog; the
-    // user can still pick a known model and the adapter will route the
-    // request to the configured URL.
     state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
     populateModelDropdown(false, FREELLMAPI_CATALOG);
     setOnline(false, 'offline');
-    showToast('Couldn\'t reach FreeLLMAPI /models — using static catalog.');
+    showToast('FreeLLMAPI: ' + (err.message || 'router unreachable') + ' — using static catalog.');
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
   }
@@ -2501,10 +2865,12 @@ async function loadFreellmapiModels(silent){
 // All fetches are soft: failures just leave "—" in the slot.
 async function refreshMetrics(){
   if(!el.metricsBar) return;
-  // Ollama-only feature: /api/ps and /api/show don't exist on FreeLLMAPI,
-  // so the bar would 404-spam. Clear it to "—" and bail.
+  // For FreeLLMAPI we don't hit /api/ps or /api/show (they don't exist).
+  // paintMetrics handles the cloud path: hides RAM via CSS and sources
+  // Ctx from the model metadata. Bail after painting so we don't waste
+  // a round trip.
   if(state.backend !== 'ollama'){
-    paintMetrics({ model: null, ram: 0, vram: 0, context: 0 });
+    paintMetrics({ model: state.activeModel || null });
     return;
   }
   const model = state.activeModel || el.modelSelect.value;
@@ -2571,30 +2937,55 @@ function paintMetrics(m){
   el.metricModel.querySelector('.value').textContent = pretty;
   el.metricModel.title = modelName || '';
 
-  // RAM: prefer VRAM (actual GPU usage) over disk size when loaded; otherwise
-  // show the on-disk size and label it as "model weight".
-  let ramLabel = '—';
-  if(v.vram && v.vram > 0){
-    ramLabel = formatBytes(v.vram) + ' GPU';
-    el.metricRam.title = formatBytes(v.vram) + ' on GPU';
-  } else if(v.ram && v.ram > 0){
-    ramLabel = formatBytes(v.ram);
-    el.metricRam.title = formatBytes(v.ram) + ' loaded into memory';
-  } else if(modelName){
-    ramLabel = 'unloaded';
-    el.metricRam.title = 'Model isn\'t loaded in memory yet';
-  } else {
-    el.metricRam.title = '';
-  }
-  el.metricRam.querySelector('.value').textContent = ramLabel;
+  // RAM and Ctx are Ollama-only metrics (from /api/ps and /api/show).
+  // For FreeLLMAPI we hide RAM entirely — there's no "loaded in memory"
+  // — and source Ctx from the model's own context_length field on
+  // /v1/models. Ctx is genuinely backend-agnostic; RAM isn't.
+  const isLocal = state.backend === 'ollama';
+  el.metricsBar.classList.toggle('backend-cloud', !isLocal);
 
-  // Context window: only meaningful once we've seen /api/show succeed.
-  if(v.context && v.context > 0){
-    el.metricContext.querySelector('.value').textContent = v.context.toLocaleString();
-    el.metricContext.title = 'Max context window: ' + v.context.toLocaleString() + ' tokens';
+  if(isLocal){
+    // RAM: prefer VRAM (actual GPU usage) over disk size when loaded;
+    // otherwise show the on-disk size and label it as "model weight".
+    let ramLabel = '—';
+    if(v.vram && v.vram > 0){
+      ramLabel = formatBytes(v.vram) + ' GPU';
+      el.metricRam.title = formatBytes(v.vram) + ' on GPU';
+    } else if(v.ram && v.ram > 0){
+      ramLabel = formatBytes(v.ram);
+      el.metricRam.title = formatBytes(v.ram) + ' loaded into memory';
+    } else if(modelName){
+      ramLabel = 'unloaded';
+      el.metricRam.title = 'Model isn\'t loaded in memory yet';
+    } else {
+      el.metricRam.title = '';
+    }
+    el.metricRam.querySelector('.value').textContent = ramLabel;
+
+    // Ctx from Ollama's /api/show (model_info.context_length).
+    if(v.context && v.context > 0){
+      el.metricContext.querySelector('.value').textContent = v.context.toLocaleString();
+      el.metricContext.title = 'Max context window: ' + v.context.toLocaleString() + ' tokens';
+    } else {
+      el.metricContext.querySelector('.value').textContent = '—';
+      el.metricContext.title = '';
+    }
   } else {
-    el.metricContext.querySelector('.value').textContent = '—';
-    el.metricContext.title = '';
+    // Cloud (FreeLLMAPI): clear RAM (CSS hides the slot anyway) and
+    // pull Ctx from the model metadata if present.
+    el.metricRam.querySelector('.value').textContent = '—';
+    el.metricRam.title = '';
+    const entry = state.models.find(x => x.name === modelName);
+    const ctx = entry && entry.parameterSize && /(\d[\d,]*)\s*ctx/i.test(entry.parameterSize)
+      ? Number(entry.parameterSize.replace(/[^\d]/g, ''))
+      : 0;
+    if(ctx > 0){
+      el.metricContext.querySelector('.value').textContent = ctx.toLocaleString();
+      el.metricContext.title = 'Max context window: ' + ctx.toLocaleString() + ' tokens';
+    } else {
+      el.metricContext.querySelector('.value').textContent = '—';
+      el.metricContext.title = '';
+    }
   }
 
   // Dim the bar until at least the model name resolves.
@@ -2611,10 +3002,17 @@ function paintMetrics(m){
 //     for the FreeLLMAPI loader. The Ollama-only suffixes ("· not
 //     installed" / "· pull to use") are suppressed when the active
 //     backend is FreeLLMAPI — those models aren't pulled locally.
+//
+// The picker is rendered into the custom popup (button + search + listbox)
+// rather than a native <select>. For ≤8 models we render a flat list —
+// no search box, no grouping — because the native-feel is friendlier at
+// that scale and the search field would be visual noise. For ≥9 (the
+// FreeLLMAPI case: 30+ cloud models) we group by provider with a sticky
+// header and show the search box, so users can find Gemini-3 without
+// scrolling through 39 entries.
 function populateModelDropdown(catalogOnly, catalog){
   catalog = catalog || MODEL_CATALOG;
   const isLocal = state.backend === 'ollama';
-  el.modelSelect.innerHTML = '';
   const previous = state.activeModel;
   const installedNames = new Set(state.models.map(m => m.name));
 
@@ -2628,31 +3026,199 @@ function populateModelDropdown(catalogOnly, catalog){
           .map(c => Object.assign({ size: 0, notInstalled: true }, c))
       );
 
+  // Group by provider. Remote models carry an explicit `provider` from
+  // mapFreellmapiModel; local Ollama models fall back to the parsed
+  // family (e.g. "llama3.2:3b" → "llama").
+  const groups = new Map();
   list.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.name;
-    const h = humaniseModel(m.name, m);
-    const meta = [h.size, h.quant || (h.tag && h.tag !== 'latest' ? h.tag : '')].filter(Boolean).join(' · ');
-    let label = meta ? (h.display + '  (' + meta + ')') : h.display;
-    // Ollama-only: visually mark catalog-only suggestions. FreeLLMAPI
-    // models are remote, so the "pull" / "not installed" hints would
-    // be misleading and are suppressed.
-    if(isLocal){
-      if(catalogOnly)          opt.textContent = label + '  · not installed';
-      else if(m.notInstalled)  opt.textContent = label + '  · pull to use';
-      else                     opt.textContent = label;
-    } else {
-      opt.textContent = label;
+    const key = (m.provider || humaniseModel(m.name, m).family || 'other').toLowerCase() || 'other';
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  });
+  // Stable sort: by group label alphabetically, models within each group
+  // preserve insertion order (installed-first comes naturally).
+  const groupKeys = Array.from(groups.keys()).sort();
+
+  // Decide whether to render the search box + grouped headers. Below
+  // the threshold we render a flat list — closer to the old UX.
+  const useGroups = list.length >= 9 || groupKeys.length > 1;
+  const useSearch = list.length >= 9;
+
+  // Build the popup body. We re-render fully each time; the list is
+  // small enough (<100 rows in the worst case) that diffing would cost
+  // more than rebuilding.
+  el.modelPopupList.innerHTML = '';
+  el.modelPopupEmpty.hidden = true;
+
+  if(useSearch){
+    el.modelPopup.querySelector('.model-popup-search').style.display = '';
+  } else {
+    el.modelPopup.querySelector('.model-popup-search').style.display = 'none';
+    if(el.modelSearch) el.modelSearch.value = '';
+  }
+
+  let firstAvailableValue = '';
+  groupKeys.forEach(key => {
+    const models = groups.get(key);
+    if(useGroups){
+      const label = document.createElement('div');
+      label.className = 'model-group-label';
+      label.textContent = providerLabel(key);
+      const cnt = document.createElement('span');
+      cnt.className = 'count';
+      cnt.textContent = '(' + models.length + ')';
+      label.appendChild(cnt);
+      el.modelPopupList.appendChild(label);
     }
-    el.modelSelect.appendChild(opt);
+    models.forEach(m => {
+      if(!firstAvailableValue) firstAvailableValue = m.name;
+      el.modelPopupList.appendChild(buildModelRow(m, isLocal));
+    });
   });
 
   // Keep the previous selection if it's still in the list; otherwise pick first.
-  const stillAvailable = previous && Array.from(el.modelSelect.options).some(o => o.value === previous);
-  el.modelSelect.value = stillAvailable ? previous : (el.modelSelect.options[0] && el.modelSelect.options[0].value || '');
-  state.activeModel = el.modelSelect.value;
+  const valuesInList = list.map(m => m.name);
+  const stillAvailable = previous && valuesInList.includes(previous);
+  const chosen = stillAvailable ? previous : firstAvailableValue;
+
+  // Mirror to the hidden input + trigger label + ring. The hidden input
+  // keeps every legacy read site (sendMessage, paintMetrics, etc.) working
+  // without a single-line rewrite.
+  setActiveModel(chosen, { skipSave: false });
+  applyModelRing();
   el.sendBtn.disabled = !state.activeModel;
   saveState();
+}
+
+// Humanise a provider key ("google", "openai", "anthropic") for the
+// group header. Falls back to the raw string when unknown.
+function providerLabel(key){
+  if(!key) return 'Other';
+  // Common aliases — render the friendly form so headers don't shout
+  // internal IDs at the user.
+  const map = {
+    google: 'Google', openai: 'OpenAI', anthropic: 'Anthropic',
+    mistral: 'Mistral', meta: 'Meta', xai: 'xAI',
+    deepseek: 'DeepSeek', qwen: 'Qwen', cohere: 'Cohere',
+    perplexity: 'Perplexity', groq: 'Groq', together: 'Together',
+    nous: 'Nous Research', microsoft: 'Microsoft', nvidia: 'NVIDIA',
+    'meta-llama': 'Meta', 'openai-compatible': 'OpenAI-compatible',
+  };
+  if(map[key]) return map[key];
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+// Build a single <div role="option"> row. Click and keyboard handlers
+// are wired here so the row owns its lifecycle.
+function buildModelRow(m, isLocal){
+  const h = humaniseModel(m.name, m);
+  const row = document.createElement('div');
+  row.className = 'model-row';
+  row.setAttribute('role', 'option');
+  row.dataset.value = m.name;
+  row.dataset.searchHaystack = (h.display + ' ' + (m.provider || '') + ' ' + m.name + ' ' + (m.description || '')).toLowerCase();
+  if(m.notInstalled) row.classList.add('not-installed');
+
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = h.display;
+  row.appendChild(name);
+
+  // Meta suffix — size / quant / context, mirrors what the native select showed.
+  const metaBits = [h.size, h.quant || (h.tag && h.tag !== 'latest' ? h.tag : '')].filter(Boolean);
+  if(metaBits.length){
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = metaBits.join(' · ');
+    row.appendChild(meta);
+  }
+
+  // Vision badge — only for FreeLLMAPI models where the flag is set;
+  // helps users find an image-capable model at a glance (Phase 3
+  // PDF rasterization depends on this).
+  if(m.vision === true){
+    const badge = document.createElement('span');
+    badge.className = 'vision-badge';
+    badge.title = 'Vision-capable — can read images';
+    badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> vision';
+    row.appendChild(badge);
+  }
+
+  // Click → select.
+  row.addEventListener('click', () => {
+    setActiveModel(m.name);
+    closeModelPopup();
+  });
+  return row;
+}
+
+// Single point of truth for "the user picked model X". Updates the
+// hidden input (legacy read sites), the visible trigger label, the
+// selection ring, the metrics bar, and persists to localStorage. The
+// `source` parameter is one of 'select' | 'search' | 'refresh' —
+// used for future analytics, currently unused but kept for clarity.
+function setActiveModel(name, opts){
+  opts = opts || {};
+  state.activeModel = name || '';
+  el.modelSelect.value = state.activeModel;
+  // Trigger label: use the parsed display name (no "(size · quant)"
+  // suffix — it'd blow out the header width).
+  el.modelSelectLabel.textContent = state.activeModel
+    ? humaniseModel(state.activeModel).display
+    : 'select a model';
+  // Mark the row in the popup as selected, if any.
+  el.modelPopupList.querySelectorAll('.model-row').forEach(r => {
+    r.setAttribute('aria-selected', r.dataset.value === state.activeModel ? 'true' : 'false');
+  });
+  if(!opts.skipSave) saveState();
+  applyModelRing();
+  refreshMetrics();
+}
+
+// Open / close the model popup. Toggles ARIA + hidden, focuses search
+// when opening so the user can start typing immediately.
+function openModelPopup(){
+  if(!el.modelPopup.hidden) return;
+  el.modelPopup.hidden = false;
+  el.modelSelectBtn.setAttribute('aria-expanded', 'true');
+  if(el.modelSearch && el.modelPopup.querySelector('.model-popup-search').style.display !== 'none'){
+    el.modelSearch.value = '';
+    filterModelRows('');
+    requestAnimationFrame(() => el.modelSearch.focus());
+  }
+}
+function closeModelPopup(){
+  if(el.modelPopup.hidden) return;
+  el.modelPopup.hidden = true;
+  el.modelSelectBtn.setAttribute('aria-expanded', 'false');
+  el.modelSelectBtn.focus();
+}
+
+// Type-to-filter. Hides rows whose haystack doesn't include the query
+// (case-insensitive substring match). When *every* row is hidden, shows
+// the empty-state message.
+function filterModelRows(query){
+  const q = String(query || '').trim().toLowerCase();
+  const rows = el.modelPopupList.querySelectorAll('.model-row');
+  let visible = 0;
+  rows.forEach(r => {
+    const hay = r.dataset.searchHaystack || '';
+    const match = !q || hay.indexOf(q) !== -1;
+    r.style.display = match ? '' : 'none';
+    if(match) visible++;
+  });
+  // Hide group headers whose rows are all hidden — avoids the awkward
+  // "empty provider" labels.
+  el.modelPopupList.querySelectorAll('.model-group-label').forEach(g => {
+    let next = g.nextElementSibling;
+    let anyVisible = false;
+    while(next && next.classList.contains('model-row')){
+      if(next.style.display !== 'none'){ anyVisible = true; break; }
+      next = next.nextElementSibling;
+    }
+    g.style.display = anyVisible ? '' : 'none';
+  });
+  el.modelPopupEmpty.hidden = visible !== 0;
 }
 
 // Turn raw model names into something readable: "llama3.2:3b-instruct-q4_K_M" → "Llama 3.2 · 3B Instruct · Q4_K_M".
@@ -3306,11 +3872,43 @@ el.input.addEventListener('input', () => {
 });
 el.chatSearch.addEventListener('input', renderChatList);
 el.refreshBtn.addEventListener('click', () => loadModels());
-el.modelSelect.addEventListener('change', () => {
-  state.activeModel = el.modelSelect.value;
-  saveState();
-  applyModelRing();
-  refreshMetrics();
+// Model picker — replaced the native <select> with a custom button +
+// popup because 39+ FreeLLMAPI models don't fit a native dropdown. The
+// hidden <input id="modelSelect"> mirrors state.activeModel so all the
+// legacy read sites (sendMessage, paintMetrics, renderMessage meta) keep
+// working unchanged.
+el.modelSelectBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if(el.modelPopup.hidden) openModelPopup();
+  else closeModelPopup();
+});
+el.modelSearch.addEventListener('input', (e) => filterModelRows(e.target.value));
+el.modelSearch.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape'){ closeModelPopup(); }
+  else if(e.key === 'Enter'){
+    // Enter on the search field picks the first visible row, mirroring
+    // what users expect from a listbox with type-to-filter.
+    const visible = Array.from(el.modelPopupList.querySelectorAll('.model-row'))
+      .find(r => r.style.display !== 'none');
+    if(visible){
+      setActiveModel(visible.dataset.value);
+      closeModelPopup();
+    }
+  }
+});
+// Click outside the wrap closes the popup. Capture-phase so we don't
+// fight the trigger's own click handler (which calls stopPropagation).
+document.addEventListener('click', (e) => {
+  if(el.modelPopup.hidden) return;
+  const wrap = document.getElementById('modelSelectWrap');
+  if(wrap && !wrap.contains(e.target)) closeModelPopup();
+});
+// Esc on the trigger closes it for keyboard users.
+el.modelSelectBtn.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && !el.modelPopup.hidden){ closeModelPopup(); }
+  else if((e.key === 'ArrowDown' || e.key === 'Enter') && el.modelPopup.hidden){
+    e.preventDefault(); openModelPopup();
+  }
 });
 el.attachBtn.addEventListener('click', () => el.fileInput.click());
 el.fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
@@ -3401,29 +3999,65 @@ if(el.backendPicker){
 }
 
 // Backend-aware connection test. Ollama pings /api/tags; FreeLLMAPI pings
-// /models with the bearer token. Both share the same 4s timeout and
-// mixed-content guard.
+// /models with the bearer token. Both share the same 4s timeout.
+//
+// Diagnostic policy — `fetch()` rejects with `TypeError: Failed to fetch`
+// for *several* distinct reasons, all of which used to surface as one
+// opaque "Browser blocked or could not reach" message. We now
+// disambiguate the four common cases so the user gets an actionable
+// hint instead of guessing:
+//   1. Mixed content: page is https://, target is http://. The browser
+//      blocks the request before it leaves. Solved by running Nocta
+//      from disk or a local HTTP server.
+//   2. CORS / cross-origin: same scheme, but the target server's
+//      response headers don't include `Access-Control-Allow-Origin`
+//      for this origin. Solved by serving Nocta from the same origin
+//      as the router, or by relaxing the server's CORS policy.
+//   3. Network unreachable: the URL itself doesn't resolve (DNS fail,
+//      connection refused, server down).
+//   4. Auth: the server replied (so CORS is fine) but rejected the
+//      request (401/403). The API key is missing or wrong.
 async function testBackendUrl(url, backend, apiKey){
   const u = (url || '').trim().replace(/\/+$/, '');
   if(!/^https?:\/\//i.test(u)) throw new Error('URL must start with http:// or https://');
   if(location.protocol === 'https:' && /^http:\/\//i.test(u)){
-    throw new Error('Mixed content: this page is https:// and the URL is http://. Browsers block this. Open index.html from disk, or serve the backend over HTTPS.');
+    throw new Error('Mixed content: this page is https:// and the URL is http://. Browsers block this. Open index.html from disk (file://), or serve both Nocta and the backend over HTTPS.');
   }
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4000);
+  const backendName = backend === 'freellmapi' ? 'FreeLLMAPI router' : 'ollama server';
   try{
     const headers = {};
     if(backend === 'freellmapi' && apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
     const probe = backend === 'freellmapi' ? (u + '/models') : (u + '/api/tags');
-    const r = await fetch(probe, { signal: ctrl.signal, headers });
-    if(!r.ok) throw new Error('Server responded with ' + r.status);
+    let r;
+    try{
+      r = await fetch(probe, { signal: ctrl.signal, headers });
+    } catch(networkErr){
+      // `fetch` rejected. Distinguish cross-origin from same-origin
+      // failure so the message points at the right fix. We can't tell
+      // CORS apart from raw network failure at the JS layer — the
+      // browser makes both look like a TypeError — so the message
+      // covers both.
+      const sameOrigin = (() => {
+        try { return new URL(u).origin === location.origin; } catch(_) { return false; }
+      })();
+      if(!sameOrigin){
+        throw new Error('Browser blocked the request to ' + u + '. The page is at ' + location.origin + ' (cross-origin) and the server either isn\'t running, or its CORS / Cross-Origin-Resource-Policy headers don\'t allow this origin. Try opening index.html from the same machine the router is on, or via the same origin as the router.');
+      }
+      throw new Error('Couldn\'t reach ' + u + '. Is the ' + backendName + ' running? (Error: ' + (networkErr.message || networkErr) + ')');
+    }
+    if(!r.ok){
+      // Server replied (so the network is fine). Status tells us why.
+      if(r.status === 401 || r.status === 403){
+        throw new Error('Server returned ' + r.status + ' — the API key was rejected. Double-check the FreeLLMAPI unified key in Preferences.');
+      }
+      throw new Error('Server responded with ' + r.status + ' ' + (r.statusText || ''));
+    }
     return true;
   } catch(e){
-    if(e && e.name === 'AbortError') throw new Error('Timed out after 4s — is the ' + (backend === 'freellmapi' ? 'FreeLLMAPI router' : 'ollama server') + ' running and reachable at ' + u + '?');
-    if(e && /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')){
-      throw new Error('Browser blocked or could not reach ' + u + ' (often a mixed-content block on https:// pages, or the service is not running)');
-    }
+    if(e && e.name === 'AbortError') throw new Error('Timed out after 4s — is the ' + backendName + ' running and reachable at ' + u + '?');
     throw e;
   } finally { clearTimeout(t); }
 }
