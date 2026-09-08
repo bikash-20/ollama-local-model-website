@@ -222,6 +222,157 @@ test.describe('Nocta smoke', () => {
     expect(persisted).toBe('claude-3.5-sonnet');
   });
 
+  test('FreeLLMAPI chat streams real SSE chunks into the assistant bubble', async ({ page }) => {
+    // Phase 2: parseFreellmapiStream is real, not the Phase 1 stub.
+    // Drive a mocked /v1/chat/completions that emits a small SSE
+    // payload (4 content chunks + [DONE]) and assert the assistant
+    // bubble shows the concatenated text and NOT the "Phase 2 arrives"
+    // placeholder that the old stub used to inject.
+    await page.route('**/api/tags', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"models":[]}' })
+    );
+    await page.route(/\/v1\/models(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { id: 'claude-3.5-sonnet', owned_by: 'anthropic', supportsVision: false, context_length: 200000 },
+          ],
+        }),
+      })
+    );
+    // SSE body in OpenAI-compatible wire format. Each chunk is a
+    // `data: <json>\n\n` line; the final `data: [DONE]\n\n` is the
+    // terminal sentinel. Five content chunks: "Hello", " world", " from",
+    // " a", " real stream."
+    const sseBody =
+      'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" from"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" a"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-5","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" real stream."},"finish_reason":"stop"}]}\n\n' +
+      'data: [DONE]\n\n';
+    await page.route(/\/v1\/chat\/completions(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+        body: sseBody,
+      })
+    );
+
+    // Bootstrap: visit once so the document has a real origin, then
+    // write our settings into localStorage and reload. evaluate() can't
+    // touch localStorage on the about:blank initial document.
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // Switch to FreeLLMAPI via localStorage. Same-origin URL trick so
+    // the cross-origin diagnostic in loadFreellmapiModels doesn't
+    // pre-empt the mock.
+    await page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('nocta_state_v1') || '{}');
+      state.backend = 'freellmapi';
+      // Clear activeModel so populateModelDropdown doesn't keep the
+      // catalog's first entry (gemini-…) sticky and refuse to switch
+      // to the mocked claude-3.5-sonnet when the live list resolves.
+      delete state.activeModel;
+      localStorage.setItem('nocta_state_v1', JSON.stringify(state));
+      const settings = JSON.parse(localStorage.getItem('nocta_settings_v1') || '{}');
+      settings.freellmapiUrl = 'http://127.0.0.1:8765/v1';
+      settings.freellmapiKey = 'test-key';
+      localStorage.setItem('nocta_settings_v1', JSON.stringify(settings));
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // Wait for the live model list to land — claude-3.5-sonnet appears
+    // as a row in the popup (even if the trigger label is still showing
+    // a catalog-fallback name from the boot pre-populate). With 1
+    // mocked entry the popup renders flat (no search box, no headers).
+    await page.waitForTimeout(500); // small buffer for populateModelDropdown
+    const claudeRow = page.locator('.model-row[data-value="claude-3.5-sonnet"]');
+    await expect(claudeRow).toBeAttached({ timeout: 5_000 });
+
+    // Click claude-3.5-sonnet in the picker — this is the user flow
+    // (the catalog's first entry is sticky from boot, so we have to
+    // actively pick the live model). This also asserts the trigger
+    // label flips to "claude".
+    await page.locator('#modelSelectBtn').click();
+    await claudeRow.click();
+    await expect(page.locator('#modelSelectBtn')).toContainText(/claude/i);
+
+    // Send a message. The send button only enables once the textarea
+    // has content.
+    await page.locator('#input').fill('hi');
+    await page.locator('#sendBtn').click();
+
+    // The user row appears immediately.
+    await expect(page.locator('.row.user .bubble')).toContainText('hi');
+    // The assistant row streams the concatenated chunks into the bubble.
+    await expect(page.locator('.row.assistant .bubble')).toContainText('Hello world from a real stream.', { timeout: 5_000 });
+    // And — critically — the Phase 1 placeholder is gone.
+    await expect(page.locator('.row.assistant .bubble')).not.toContainText(/Phase 2 arrives|streaming arrives/i);
+  });
+
+  test('FreeLLMAPI router error envelope surfaces in the assistant bubble', async ({ page }) => {
+    // When the router returns an OpenAI error envelope (model not
+    // found, key rejected, rate limit, …), parseFreellmapiStream
+    // throws and the sendMessage catch block paints the message into
+    // a red .err-line box inside the bubble. The user sees *why* the
+    // model failed, not just a generic offline banner.
+    await page.route('**/api/tags', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"models":[]}' })
+    );
+    await page.route(/\/v1\/models(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { id: 'claude-3.5-sonnet', owned_by: 'anthropic', supportsVision: false, context_length: 200000 },
+          ],
+        }),
+      })
+    );
+    // HTTP 200 with an OpenAI error envelope in the body. Some
+    // routers do this when stream:true was requested but the model
+    // lookup fails before streaming begins.
+    await page.route(/\/v1\/chat\/completions(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { message: 'model not found: claude-3.5-sonnet', type: 'invalid_request_error' } }),
+      })
+    );
+
+    // Bootstrap: visit once so localStorage is accessible.
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('nocta_state_v1') || '{}');
+      state.backend = 'freellmapi';
+      delete state.activeModel; // see streaming test for rationale
+      localStorage.setItem('nocta_state_v1', JSON.stringify(state));
+      const settings = JSON.parse(localStorage.getItem('nocta_settings_v1') || '{}');
+      settings.freellmapiUrl = 'http://127.0.0.1:8765/v1';
+      settings.freellmapiKey = 'test-key';
+      localStorage.setItem('nocta_settings_v1', JSON.stringify(settings));
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // Wait for the mocked claude row to land in the popup, then select it.
+    const claudeRow = page.locator('.model-row[data-value="claude-3.5-sonnet"]');
+    await expect(claudeRow).toBeAttached({ timeout: 5_000 });
+    await page.locator('#modelSelectBtn').click();
+    await claudeRow.click();
+
+    await page.locator('#input').fill('hi');
+    await page.locator('#sendBtn').click();
+
+    // The .err-line box (red) renders the specific router message.
+    await expect(page.locator('.row.assistant .err-line')).toContainText('model not found: claude-3.5-sonnet', { timeout: 5_000 });
+    // And the bubble is NOT the "Phase 2 placeholder" path (which would
+    // show "isn't reachable right now").
+    await expect(page.locator('.row.assistant .bubble')).not.toContainText(/isn't reachable/);
+  });
+
   test('preferences show backend selector with Ollama selected by default', async ({ page }) => {
     // Phase 1: prefs modal exposes a backend picker (Ollama vs FreeLLMAPI)
     // and Ollama is the default for fresh installs / no saved state.

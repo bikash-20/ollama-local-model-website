@@ -25,7 +25,7 @@
 
 ## What's new
 
--  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; FreeLLMAPI chat streaming is a Phase 2 placeholder so the UI is fully testable without standing up the router. The model picker is now backed by the live `/v1/models` response (with a small static catalog as a last-resort fallback) and filters out providers you haven't configured keys for. With 9+ models in play (the FreeLLMAPI case) the picker groups by provider, adds a type-to-filter search box, and shows a 📷 badge on vision-capable models — see [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
+-  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; **Phase 2 ships real OpenAI-compatible SSE streaming** so FreeLLMAPI replies land chunk-by-chunk just like Ollama's, with router error envelopes (`model not found`, `key rejected`, `rate limit`) surfaced as a red box in the bubble. The model picker is now backed by the live `/v1/models` response (with a small static catalog as a last-resort fallback) and filters out providers you haven't configured keys for. With 9+ models in play (the FreeLLMAPI case) the picker groups by provider, adds a type-to-filter search box, and shows a 📷 badge on vision-capable models — see [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
 -  **Independent text-color picker.** A second picker in Preferences → Text color lets you choose the body-text palette on its own, decoupled from the accent theme. Five presets ship — Default, Plum, Slate, Cream, Sage — each with its own dark and light variant. Mix and match freely (Ocean accent + Plum text, Rose accent + Slate text, etc.) and both choices are remembered. The accent theme picker is unchanged.
 -  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
@@ -473,31 +473,32 @@ send, and you can flip mid-conversation — your chat history carries
 over to the new backend, so you can route a specific turn through
 the other service.
 
-### What works today (Phase 1)
+### What works today (Phase 2)
 
 The Backend selector, settings plumbing (URL + API key fields), the
 adapter layer that lets each backend speak its native wire format, and
 the model-loader / dropdown logic are all live. **Ollama is fully
 functional — every chat feature behaves exactly as before.** FreeLLMAPI
-is in a Phase 1 stub:
+streaming now ships as real OpenAI-compatible SSE parsing against
+`/v1/chat/completions`:
 
 - The model dropdown is populated from the router's `/v1/models`
   endpoint when reachable, falling back to a curated static catalog
   (`gpt-5.4`, `gemini-3.1-flash-lite-thinking`,
   `grok-4.1-fast-reasoning`) otherwise.
-- Sending a message routes through the FreeLLMAPI adapter and returns
-  a clear "Phase 2 placeholder" reply in the bubble instead of
-  streaming. This makes the entire UI testable end-to-end without
-  standing up the router.
-- "Test connection" stays as a real network probe for users who want
-  to verify connectivity; for FreeLLMAPI a failed probe no longer
-  reads as fatal, since the stub responds regardless.
+- Sending a message routes through the FreeLLMAPI adapter and streams
+  the reply chunk-by-chunk from the router (each `data: {…}` line is
+  parsed, deltas concatenated, `data: [DONE]` is the terminal
+  sentinel).
+- Router error envelopes (`{"error":{"message":"…"}}`) are surfaced in
+  the bubble as a red box so the user sees *why* the model failed
+  (model not found, key rejected, rate limit) instead of an empty
+  reply.
+- Network-level failures (router down, CORS, mixed-content) keep the
+  friendly Phase 1 placeholder so the UI is never misleading.
 
 ### What's coming next
 
-- **Phase 2 — real FreeLLMAPI streaming.** Replace the stub with real
-  SSE parsing against `/v1/chat/completions`, error mapping from the
-  router's status codes, and proper cancellation.
 - **Phase 3 — vision / PDF upload.** Attach images and PDFs to a
   message; vision-capable models rasterize the input and pass it
   through. Ollama's `/api/chat` already accepts multimodal payloads;
@@ -1102,9 +1103,9 @@ exactly as it did before voice existed.
 
 ## Roadmap
 
-- **Phase 2 — real FreeLLMAPI streaming** (SSE parsing against
-  `/v1/chat/completions`, error mapping, proper cancellation). Phase 1
-  ships the selector + adapter skeleton with a stub reply.
+- **Phase 2 — real FreeLLMAPI streaming** ✅ shipped: SSE parsing
+  against `/v1/chat/completions`, error envelope surfaced in the bubble,
+  network-level failures still fall back to a friendly placeholder.
 - **Phase 3 — vision / PDF upload.** Image and PDF attachments;
   vision-capable models rasterize the input and pass it through.
 - Per-model parameter overrides (`top_p`, `top_k`, `repeat_penalty`)
@@ -1153,8 +1154,11 @@ npm test                     # run the suite
 The tests boot `index.html` in headless Chromium, stub `/api/tags` and
 `/api/chat`, and verify the page boots without console errors, the
 persistent offline banner appears when Ollama is down, chat history
-survives a hard reload, and (Phase 1) the Preferences modal exposes
-the Backend selector with Ollama selected by default.
+survives a hard reload, the Preferences modal exposes the Backend
+selector with Ollama selected by default, the custom model dropdown
+groups by provider / type-to-filter / selects, **and (Phase 2) that
+FreeLLMAPI real SSE chunks stream into the assistant bubble while
+router error envelopes surface as a red box.**
 
 ---
 
