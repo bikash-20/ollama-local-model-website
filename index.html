@@ -4093,9 +4093,15 @@ el.prefsTest.addEventListener('click', async () => {
     // still let the user proceed. Ollama is required for actual chat
     // so its failure is shown as a hard error.
     if(state.backend === 'freellmapi'){
-      el.prefsStatus.textContent = 'router not reachable — Phase 1 stub will still respond in chat';
+      // Surface the specific reason inline (not just on hover) so the
+      // user can act on it without reaching for devtools. Common
+      // causes: page is on a different origin than the router (CORS),
+      // mixed-content block on https:// pages, router not running,
+      // API key rejected. The full diagnostic lives in testBackendUrl.
+      const reason = (e && e.message) ? e.message : 'unreachable';
+      el.prefsStatus.textContent = 'router not reachable — ' + reason + ' (Phase 1 stub still responds in chat)';
       el.prefsStatus.className = 'pref-status';
-      el.prefsStatus.title = (e && e.message) ? e.message : '';
+      el.prefsStatus.title = reason;
     } else {
       el.prefsStatus.textContent = 'failed — ' + (e.message || 'unreachable');
       el.prefsStatus.className = 'pref-status err';
