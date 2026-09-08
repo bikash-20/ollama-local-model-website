@@ -1778,9 +1778,54 @@ const MODEL_CATALOG = [
 // unchanged across both backends. Field names mirror Ollama's to keep
 // populateModelDropdown simple.
 const FREELLMAPI_CATALOG = [
-  { name: 'gpt-5.4',                       family: 'openai', parameterSize: '—', quantization: '', format: 'openai', description: 'OpenAI GPT-5.4 via FreeLLMAPI router.' },
-  { name: 'gemini-3.1-flash-lite-thinking', family: 'gemini', parameterSize: '—', quantization: '', format: 'openai', description: 'Google Gemini 3.1 Flash Lite (thinking).' },
-  { name: 'grok-4.1-fast-reasoning',        family: 'grok',   parameterSize: '—', quantization: '', format: 'openai', description: 'xAI Grok 4.1 Fast Reasoning.' },
+  // Google (10). Mirrors the provider keys configured in the local
+  // FreeLLMAPI router (freeapi.db → api_keys, status=healthy), kept in
+  // sync with the live /v1/models response.
+  { name: 'gemini-2.5-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 2.5 Flash — fast multimodal chat.' },
+  { name: 'gemini-2.5-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 2.5 Flash Lite — lightweight, fast.' },
+  { name: 'gemini-3-flash-preview',           family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3 Flash (preview) — latest generation.' },
+  { name: 'gemini-3.1-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.1 Flash Lite — quick, multimodal.' },
+  { name: 'gemini-3.5-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.5 Flash — current flagship free tier.' },
+  { name: 'gemini-3.5-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.5 Flash Lite — fast everyday chat.' },
+  { name: 'gemini-3.6-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.6 Flash — newest flash update.' },
+  { name: 'gemini-robotics-er-2-preview',     family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini Robotics ER 2 (preview).' },
+  { name: 'gemma-4-26b-a4b-it',               family: 'google',    parameterSize: '26B', quantization: '', vision: true, format: 'openai', description: 'Google Gemma 4 26B (A4B, instruct) — open-weights.' },
+  { name: 'gemma-4-31b-it',                   family: 'google',    parameterSize: '31B', quantization: '', vision: true, format: 'openai', description: 'Google Gemma 4 31B (instruct) — open-weights.' },
+
+  // Groq (9)
+  { name: 'allam-2-7b',                       family: 'groq',      parameterSize: '7B',  quantization: '', format: 'openai', description: 'Groq Allam 2 7B — fast inference on Groq hardware.' },
+  { name: 'groq/compound',                    family: 'groq',      parameterSize: '—',   quantization: '', vision: true, format: 'openai', description: 'Groq Compound — vision-capable router model.' },
+  { name: 'groq/compound-mini',               family: 'groq',      parameterSize: '—',   quantization: '', format: 'openai', description: 'Groq Compound Mini — compact variant.' },
+  { name: 'meta-llama/llama-prompt-guard-2-22m', family: 'groq',   parameterSize: '22M', quantization: '', format: 'openai', description: 'Meta Llama Prompt Guard 2 (22M) — safety classifier.' },
+  { name: 'meta-llama/llama-prompt-guard-2-86m', family: 'groq',   parameterSize: '86M', quantization: '', format: 'openai', description: 'Meta Llama Prompt Guard 2 (86M) — safety classifier.' },
+  { name: 'openai/gpt-oss-120b',              family: 'groq',      parameterSize: '120B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS 120B via Groq — open-weights.' },
+  { name: 'openai/gpt-oss-20b',               family: 'groq',      parameterSize: '20B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS 20B via Groq — open-weights.' },
+  { name: 'openai/gpt-oss-safeguard-20b',     family: 'groq',      parameterSize: '20B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS Safeguard 20B — safety model.' },
+  { name: 'qwen/qwen3.6-27b',                 family: 'groq',      parameterSize: '27B', quantization: '', format: 'openai', description: 'Qwen 3.6 27B via Groq.' },
+
+  // Mistral (12)
+  { name: 'codestral-latest',                 family: 'mistral',   parameterSize: '22B', quantization: '', format: 'openai', description: 'Mistral Codestral — code generation specialist.' },
+  { name: 'devstral-latest',                  family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Devstral — developer workflow model.' },
+  { name: 'devstral-medium-latest',           family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Devstral Medium — mid-size developer model.' },
+  { name: 'magistral-medium-latest',          family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Magistral Medium — agentic reasoning.' },
+  { name: 'magistral-small-latest',           family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Magistral Small — compact reasoning.' },
+  { name: 'ministral-14b-latest',             family: 'mistral',   parameterSize: '14B', quantization: '', format: 'openai', description: 'Mistral Ministral 14B — edge-class model.' },
+  { name: 'ministral-8b-latest',              family: 'mistral',   parameterSize: '8B',  quantization: '', format: 'openai', description: 'Mistral Ministral 8B — edge-class model.' },
+  { name: 'mistral-code-agent-latest',        family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Code Agent — autonomous coding agent.' },
+  { name: 'mistral-code-latest',              family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Code — coding-focused model.' },
+  { name: 'mistral-medium-latest',            family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Medium — higher-quality flagship.' },
+  { name: 'mistral-small-latest',             family: 'mistral',   parameterSize: '24B', quantization: '', format: 'openai', description: 'Mistral Small 3.2 24B — fast general assistant.' },
+  { name: 'mistral-vibe-cli-fast',            family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Vibe CLI Fast — terminal-optimised.' },
+
+  // OpenRouter (8, :free endpoints)
+  { name: 'cohere/north-mini-code:free',      family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Cohere North Mini (code) via OpenRouter free tier.' },
+  { name: 'google/gemma-4-26b-a4b-it:free',   family: 'openrouter', parameterSize: '26B', quantization: '', format: 'openai', description: 'Google Gemma 4 26B via OpenRouter free tier.' },
+  { name: 'google/gemma-4-31b-it:free',       family: 'openrouter', parameterSize: '31B', quantization: '', format: 'openai', description: 'Google Gemma 4 31B via OpenRouter free tier.' },
+  { name: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', family: 'openrouter', parameterSize: '30B', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3 Nano Omni (reasoning) via OpenRouter free tier.' },
+  { name: 'nvidia/nemotron-3-super-120b-a12b:free', family: 'openrouter', parameterSize: '120B', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3 Super via OpenRouter free tier.' },
+  { name: 'nvidia/nemotron-3.5-content-safety:free', family: 'openrouter', parameterSize: '—', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3.5 Content Safety via OpenRouter free tier.' },
+  { name: 'poolside/laguna-s-2.1:free',       family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Poolside Laguna S 2.1 via OpenRouter free tier.' },
+  { name: 'poolside/laguna-xs-2.1:free',      family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Poolside Laguna XS 2.1 via OpenRouter free tier.' },
 ];
 
 // Providers that the FreeLLMAPI dashboard lists under "Hidden (no keys)"
@@ -1822,10 +1867,13 @@ const FREELLMAPI_EXCLUDED_MODEL_IDS = new Set([
 // model supports it) just fall back to text-extraction, which is safe.
 // So when in doubt, leave the model OUT of this table.
 const FREELLMAPI_VISION_MODELS = new Set([
-  // Google Gemini
-  'gemini-3-flash-preview', 'gemini-3.1-flash-lite-thinking',
-  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-pro',
-  'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash',
+  // Google Gemini + Gemma (curated from router catalog: supports_vision=1)
+  'gemini-3-flash-preview', 'gemini-3.1-flash-lite',
+  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+  'gemini-2.0-pro', 'gemini-2.0-flash', 'gemini-1.5-pro',
+  'gemini-1.5-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
+  'gemini-3.6-flash', 'gemini-robotics-er-2-preview',
+  'gemma-4-26b-a4b-it', 'gemma-4-31b-it',
   // OpenAI
   'gpt-5.4', 'gpt-5', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo',
   'gpt-4-vision-preview', 'o1', 'o1-mini', 'o3', 'o3-mini',
@@ -1838,6 +1886,8 @@ const FREELLMAPI_VISION_MODELS = new Set([
   'llama-3.2-90b-vision', 'llama-3.2-11b-vision',
   // xAI Grok 2 vision
   'grok-2-vision', 'grok-4.1-fast-reasoning',
+  // Groq (curated from router catalog: supports_vision=1)
+  'groq/compound',
   // Open-source vision models surfaced via the router
   'llava:13b', 'llava-llama3:8b', 'minicpm-v', 'qwen2-vl-72b',
   'qwen2-vl-7b', 'internvl2'
@@ -2888,7 +2938,13 @@ async function loadFreellmapiModels(silent){
       populateModelDropdown(false, FREELLMAPI_CATALOG);
       return;
     }
-    populateModelDropdown(false, FREELLMAPI_CATALOG);
+    // Live list succeeded — it IS the picker list. Unlike the Ollama
+    // path, FreeLLMAPI catalog entries must NOT be appended as "not
+    // installed" suggestions: there's nothing to `ollama pull` for a
+    // remote router, and a model absent from /v1/models would just
+    // error on send. The static catalog is the fallback only and is
+    // already substituted above when the live list comes back empty.
+    populateModelDropdown(false, []);
   }catch(err){
     if(err && err.name === 'AbortError'){
       // Slow router — keep previous list, no UI flap. Don't paint

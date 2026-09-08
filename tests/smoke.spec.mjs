@@ -176,8 +176,8 @@ test.describe('Nocta smoke', () => {
 
     // Wait for the live /v1/models fetch to land — the trigger label
     // will update from "select a model" to one of the mocked model
-    // names. (Until that fetch resolves, the popup renders the 3-entry
-    // static catalog fallback.)
+    // names. (Until that fetch resolves, the popup renders the static
+    // catalog fallback.)
     await expect(trigger).toContainText(/gemini|gpt|claude|mistral|llama|deepseek|qwen/i, { timeout: 5_000 });
 
     await trigger.click();

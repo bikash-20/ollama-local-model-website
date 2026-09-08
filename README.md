@@ -484,8 +484,8 @@ streaming now ships as real OpenAI-compatible SSE parsing against
 
 - The model dropdown is populated from the router's `/v1/models`
   endpoint when reachable, falling back to a curated static catalog
-  (`gpt-5.4`, `gemini-3.1-flash-lite-thinking`,
-  `grok-4.1-fast-reasoning`) otherwise.
+  (the ~39 chat models available through the configured provider keys)
+  otherwise.
 - Sending a message routes through the FreeLLMAPI adapter and streams
   the reply chunk-by-chunk from the router (each `data: {…}` line is
   parsed, deltas concatenated, `data: [DONE]` is the terminal
