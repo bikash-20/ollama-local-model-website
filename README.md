@@ -25,7 +25,7 @@
 
 ## What's new
 
--  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; **Phase 2 ships real OpenAI-compatible SSE streaming** so FreeLLMAPI replies land chunk-by-chunk just like Ollama's, with router error envelopes (`model not found`, `key rejected`, `rate limit`) surfaced as a red box in the bubble. The model picker is now backed by the live `/v1/models` response (with a small static catalog as a last-resort fallback) and filters out providers you haven't configured keys for. With 9+ models in play (the FreeLLMAPI case) the picker groups by provider, adds a type-to-filter search box, and shows a 📷 badge on vision-capable models — see [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
+-  **Local-first runtime.** Nocta now routes chat and model discovery through Ollama only. Older browser state that selected the removed remote router is migrated back to the local daemon automatically.
 -  **Independent text-color picker.** A second picker in Preferences → Text color lets you choose the body-text palette on its own, decoupled from the accent theme. Five presets ship — Default, Plum, Slate, Cream, Sage — each with its own dark and light variant. Mix and match freely (Ocean accent + Plum text, Rose accent + Slate text, etc.) and both choices are remembered. The accent theme picker is unchanged.
 -  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
@@ -67,7 +67,6 @@ USB stick.
 - [Install it as an app (PWA)](#install-it-as-an-app-pwa)
 - [The curated model catalog](#the-curated-model-catalog)
 - [Features](#features)
-- [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi)
 - [Preferences and settings](#preferences-and-settings)
 - [Voice input and output (local)](#voice-input-and-output-local)
 - [Math rendering (KaTeX)](#math-rendering-katex)
@@ -411,7 +410,7 @@ never heard of the family before.
 - Copy any message with one click
 - Regenerate the last assistant response against the same prompt
 - Stop a generation mid-stream without freezing the UI
-- Switch between Ollama and FreeLLMAPI mid-conversation (see [Backends](#backends-ollama-and-freellmapi))
+- Chat privately with models running in your local Ollama daemon
 
 ### Voice (new)
 
@@ -605,10 +604,7 @@ modal. There are four core settings, plus two for voice:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Backend | Pick **Ollama (local)** or **FreeLLMAPI**. Each backend shows its own URL/key fields below the picker. Switching is instant and applies to the next message. | Ollama (local) |
-| Server URL | Where to find Ollama. Used when Backend = Ollama. Use `http://host:port`. | `http://localhost:11434` |
-| FreeLLMAPI base URL | Where to find the FreeLLMAPI router. Used when Backend = FreeLLMAPI. OpenAI-compatible `/v1/...` paths. | `http://localhost:3001/v1` |
-| FreeLLMAPI API key | Bearer token for the FreeLLMAPI router. Stored only in this browser's `localStorage`. | _(empty)_ |
+| Server URL | Where to find Ollama. Use `http://host:port` for a local or LAN daemon. | `http://localhost:11434` |
 | System prompt | Sent as a `system` message ahead of every request in all chats. Edits apply to future turns immediately. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
 | Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, or Rose. Pick a swatch and the app recolors instantly. | Aurora |
@@ -616,8 +612,7 @@ modal. There are four core settings, plus two for voice:
 | Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |
 | Voice (TTS) endpoint | Where your local text-to-speech server lives. Leave blank to hide the speaker icon. | _(empty)_ |
 
-Click **Test connection** inside Preferences to ping the active
-backend's endpoint before saving.
+Click **Test connection** inside Preferences to ping Ollama before saving.
 
 > **Reminder:** Preferences are stored per browser origin. If you use
 > both the hosted `https://` link and a local `file://` copy, you'll

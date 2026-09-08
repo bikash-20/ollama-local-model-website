@@ -12,7 +12,7 @@
  *
  * Bump CACHE_VERSION on any change to app shell HTML/CSS/JS.
  */
-const CACHE_VERSION = "nocta-v16";
+const CACHE_VERSION = "nocta-v17";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const CDN_CACHE = `${CACHE_VERSION}-cdn`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
@@ -111,18 +111,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Stale-while-revalidate for same-origin shell assets.
+  // Prefer the current shell so an installed PWA picks up fixes immediately;
+  // use the cached shell only when the network is unavailable.
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
-        const cached = await cache.match(req, { ignoreSearch: true });
-        const networkPromise = fetch(req)
-          .then((res) => {
-            if (res && res.ok) cache.put(req, res.clone());
-            return res;
-          })
-          .catch(() => null);
-        return cached || (await networkPromise) || Response.error();
+        try {
+          const res = await fetch(req, { cache: "no-store" });
+          if (res && res.ok) cache.put(req, res.clone());
+          return res;
+        } catch (err) {
+          return (await cache.match(req, { ignoreSearch: true })) || Response.error();
+        }
       })
     );
     return;

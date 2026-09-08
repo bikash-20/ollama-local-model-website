@@ -622,7 +622,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     position:absolute;
     top:calc(100% + 6px);left:0;right:0;
     z-index:50;
-    background:var(--glass-strong);
+    background:color-mix(in srgb, var(--bg-2) 94%, transparent);
     border:1px solid var(--glass-border);
     border-radius:14px;
     box-shadow:0 12px 40px rgba(0,0,0,0.35),
@@ -639,8 +639,9 @@ body.ready{opacity:1;transition:opacity .25s ease;}
      wins on specificity. Force-override so toggling .hidden actually
      hides the menu (and so Playwright's :visible check is accurate). */
   .model-popup[hidden]{display:none !important;}
+  .model-popup{
     display:flex;flex-direction:column;
-    max-height:min(60vh, 460px);
+    max-height:min(42vh, 360px);
   }
   .model-popup-search{
     display:flex;align-items:center;gap:8px;
@@ -1629,38 +1630,11 @@ body.ready{opacity:1;transition:opacity .25s ease;}
       <h3>Preferences</h3>
       <p class="modal-sub">Tune the connection and behavior of your local model.</p>
 
-      <div class="pref-label"><span>Backend</span></div>
-      <div class="backend-picker" id="backendPicker" role="radiogroup" aria-label="Backend">
-        <button type="button" class="backend-pill" data-backend="ollama" role="radio" aria-checked="false" title="Local Ollama daemon">
-          <span class="bp-name">Ollama (local)</span>
-          <span class="bp-desc">runs on your machine · no API key</span>
-        </button>
-        <button type="button" class="backend-pill" data-backend="freellmapi" role="radio" aria-checked="false" title="FreeLLMAPI OpenAI-compatible router">
-          <span class="bp-name">FreeLLMAPI</span>
-          <span class="bp-desc">localhost:3001 · bearer token</span>
-        </button>
-      </div>
-      <p class="pref-hint">Pick which service sends chat completions. Switching is additive — both can run at the same time on different ports.</p>
-
-      <div data-backend-section="ollama">
-        <label class="pref-label">
-          <span>Ollama server URL</span>
-          <input type="text" id="prefsUrl" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false">
-        </label>
-        <p class="pref-hint">Use <code>http://YOUR-LAN-IP:11434</code> to chat with Ollama running on another device on the same network. For that to work, start the server with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>.</p>
-      </div>
-
-      <div data-backend-section="freellmapi" class="hidden">
-        <label class="pref-label">
-          <span>FreeLLMAPI base URL</span>
-          <input type="text" id="prefsFreellmapiUrl" placeholder="http://localhost:3001/v1" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="pref-label">
-          <span>FreeLLMAPI API key</span>
-          <input type="password" id="prefsFreellmapiKey" placeholder="sk-…" autocomplete="off" spellcheck="false">
-        </label>
-        <p class="pref-hint">Stored only in this browser's localStorage. Sent as <code>Authorization: Bearer &lt;key&gt;</code> on every request. FreeLLMAPI must be running locally; FreeLLMAPI does not host your key.</p>
-      </div>
+      <label class="pref-label">
+        <span>Ollama server URL</span>
+        <input type="text" id="prefsUrl" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="pref-hint">Use <code>http://YOUR-LAN-IP:11434</code> to chat with Ollama running on another device on the same network. For that to work, start the server with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>.</p>
 
       <div class="pref-row">
         <button class="btn" id="prefsReset">Use localhost</button>
@@ -2012,9 +1986,6 @@ const el = {
   themeGrid: document.getElementById('themeGrid'),
   textThemeGrid: document.getElementById('textThemeGrid'),
   prefsUrl: document.getElementById('prefsUrl'),
-  prefsFreellmapiUrl: document.getElementById('prefsFreellmapiUrl'),
-  prefsFreellmapiKey: document.getElementById('prefsFreellmapiKey'),
-  backendPicker: document.getElementById('backendPicker'),
   prefsSystem: document.getElementById('prefsSystem'),
   prefsTemp: document.getElementById('prefsTemp'),
   prefsTest: document.getElementById('prefsTest'),
@@ -2030,16 +2001,7 @@ const el = {
   voiceStatus: document.getElementById('voiceStatus'),
 };
 
-let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 },
-  // ─── Backend selector (Phase 1) ──────────────────────────────────
-  // 'ollama' = local Ollama daemon (today's behavior). 'freellmapi' =
-  // OpenAI-compatible router on localhost:3001 (Phase 1 ships a stub;
-  // Phase 2 wires real SSE streaming; Phase 3 adds PDF). Default is
-  // 'ollama' so existing localStorage loads cleanly with no migration.
-  backend: 'ollama',
-  freellmapiUrl: 'http://localhost:3001/v1',
-  freellmapiKey: '',
-};
+let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 }, backend: 'ollama' };
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
@@ -2071,6 +2033,9 @@ function loadState(){
       if(parsed && Array.isArray(parsed.chats)) state = Object.assign(state, parsed);
     }
   }catch(e){}
+  // FreeLLMAPI is no longer a supported runtime backend. Reset older
+  // localStorage values so existing installs always use the local daemon.
+  state.backend = 'ollama';
   try{
     const raw = localStorage.getItem(SETTINGS_KEY);
     if(raw){
@@ -2081,19 +2046,19 @@ function loadState(){
     settings.ttsUrl = (typeof settings.ttsUrl === 'string') ? settings.ttsUrl : '';
     settings.speakerOn = !!settings.speakerOn;
   }catch(e){}
-  // Mirror the FreeLLMAPI URL/key from settings into state if state
-  // never had them written (the user hasn't opened the prefs modal
-  // since adding these fields). Without this, a fresh-install user
-  // who only ever configures FreeLLMAPI through settings would still
-  // hit the hardcoded localhost:3001 default.
-  if(typeof settings.freellmapiUrl === 'string' && settings.freellmapiUrl){
-    if(!state.freellmapiUrl || state.freellmapiUrl === 'http://localhost:3001/v1'){
-      state.freellmapiUrl = settings.freellmapiUrl;
-    }
-  }
-  if(typeof settings.freellmapiKey === 'string' && !state.freellmapiKey){
-    state.freellmapiKey = settings.freellmapiKey;
-  }
+  // Remove configuration from the retired remote router so it cannot be
+  // resurrected by an older cached document or settings migration.
+  delete state.freellmapiUrl;
+  delete state.freellmapiKey;
+  delete settings.freellmapiUrl;
+  delete settings.freellmapiKey;
+  state.chats.forEach(chat => {
+    chat.messages = chat.messages.filter(message =>
+      !(message && message.role === 'assistant' && /FreeLLMAPI router at|FreeLLMAPI router/i.test(message.content || ''))
+    );
+  });
+  saveState();
+  saveSettings();
 }
 function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -2795,33 +2760,19 @@ function setOnline(isOnline, stateName){
   const name = stateName || (isOnline ? 'ok' : 'offline');
   el.statusDot.classList.remove('online','offline','checking','local');
   el.statusDot.classList.add(name);
-  // Status text adapts to the active backend. "connected" makes sense
-  // for Ollama (the local daemon is up); for FreeLLMAPI we say "router
-  // ready" so it's clear what was checked. The fallback path uses
-  // "checking" with a yellow dot — friendlier than the previous red
-  // "error" which implied the whole app was broken when only the
-  // cloud router was unreachable.
-  const isCloud = state.backend === 'freellmapi';
   const label = ({
-    ok: isCloud ? 'router ready' : 'connected',
-    checking: 'router unreachable',
+    ok: 'connected',
+    checking: 'checking',
     local: 'local mode',
     offline: 'error'
   })[name] || 'offline';
   el.statusText.textContent = label;
 }
 
-// Models are loaded per backend. The dispatcher picks the loader for
-// the active backend, and each loader normalizes its response to the
-// shared `state.models` shape used by populateModelDropdown:
-//   { name, size, family, parameterSize, quantization, format }
-// For Ollama this comes from /api/tags; for FreeLLMAPI it comes from
-// /v1/models (OpenAI shape) with a static fallback if the router is
-// unreachable or doesn't expose the endpoint.
+// Ollama is the only supported runtime backend. The model list comes from
+// the daemon's /api/tags endpoint and is normalized for the picker.
 async function loadModels(silent){
-  return state.backend === 'ollama'
-    ? loadOllamaModels(silent)
-    : loadFreellmapiModels(silent);
+  return loadOllamaModels(silent);
 }
 
 async function loadOllamaModels(silent){
@@ -3191,7 +3142,8 @@ function populateModelDropdown(catalogOnly, catalog){
 
   // Keep the previous selection if it's still in the list; otherwise pick first.
   const valuesInList = list.map(m => m.name);
-  const stillAvailable = previous && valuesInList.includes(previous);
+  const stillAvailable = previous && valuesInList.includes(previous) &&
+    (catalogOnly || installedNames.size === 0 || installedNames.has(previous));
   const chosen = stillAvailable ? previous : firstAvailableValue;
 
   // Mirror to the hidden input + trigger label + ring. The hidden input
@@ -3975,20 +3927,12 @@ async function sendMessage(text, opts){
 
   abortController = new AbortController();
 
-  // Pick the adapter for the active backend. Each adapter is responsible
-  // for both the wire request (buildRequest) and the stream parser
-  // (parseStream). The dispatcher's only job is to plumb the chunks back
-  // into the bubble.
-  const adapter = state.backend === 'ollama'
-    ? { build: buildOllamaRequest, parse: parseOllamaStream }
-    : { build: buildFreellmapiRequest, parse: parseFreellmapiStream };
+  const adapter = { build: buildOllamaRequest, parse: parseOllamaStream };
 
   try{
     const { url, init } = adapter.build(apiHistory, model, {
       temperature: settings.temperature,
-      signal: abortController.signal,
-      freellmapiKey: settings.freellmapiKey,
-      freellmapiUrl: state.freellmapiUrl
+      signal: abortController.signal
     });
 
     const res = await fetch(url, init);
@@ -4010,50 +3954,6 @@ async function sendMessage(text, opts){
       // enough — finalise with whatever we have so it gets persisted
       // to the chat history.
       finaliseReply(bubble, chat, fullReply || '_(stopped)_', evalCount, streamStart);
-    } else if(state.backend === 'freellmapi'){
-      // Phase 2: distinguish network-level failures (router unreachable,
-      // CORS, mixed-content) from in-flight failures (router responded
-      // but with an error envelope or malformed SSE).
-      //
-      // We classify by error.message prefix:
-      //   • starts with 'router:'  → the parser hit a router error
-      //     envelope (model not found, key rejected, rate limit, etc).
-      //     Surface the specific reason in the bubble so the user can
-      //     act on it. Red text via .err-line class.
-      //   • anything else          → the fetch itself failed. The router
-      //     never responded. Show the placeholder + toast as before.
-      const msg = (err && err.message) ? err.message : 'unknown error';
-      const isRouterError = msg.indexOf('router:') === 0;
-      const routerErrorBody = msg.slice('router:'.length).trim();
-      const placeholder = '_The FreeLLMAPI router at <code>' +
-        escapeHtml((settings.freellmapiUrl || 'http://localhost:3001/v1')) +
-        '</code> isn\'t reachable right now (<code>' +
-        escapeHtml(msg) + '</code>). Once it comes back online, replies will stream here._';
-      const body = isRouterError
-        ? '<div class="err-line"><strong>Router returned an error:</strong> ' +
-          escapeHtml(routerErrorBody) + '</div>'
-        : placeholder;
-      appendStreamingText(bubble, body);
-      scrollToBottom(true);
-      // For router errors we want the markdown renderer to render the
-      // err-line div as HTML (it's already escaped-safe); for the
-      // placeholder we use the underscore-italic markdown form.
-      // The simplest path: hand the final text to finaliseReply →
-      // renderContent(streaming=false). For the err-line case we
-      // bypass that and write the HTML directly so the red box
-      // doesn't get markdown-stripped.
-      if(isRouterError){
-        bubble._streamNode = null;
-        bubble._cursor = null;
-        bubble.innerHTML = body;
-        chat.messages.push({ role: 'assistant', content: routerErrorBody, time: nowTime(), error: true });
-        touchChat(chat);
-        saveState();
-        renderChatList();
-      } else {
-        finaliseReply(bubble, chat, placeholder, 0, streamStart);
-        showToast('FreeLLMAPI: ' + msg + ' — router unreachable.');
-      }
     } else {
       bubble.innerHTML = '<div style="color:var(--danger)">Couldn\'t get a response — the Ollama server may have stopped.</div>';
       showError('Something went wrong talking to Ollama. Check that <code>ollama serve</code> is still running.');
@@ -4214,35 +4114,9 @@ el.clearAllBtn.addEventListener('click', () => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Preferences modal — backend selector, server URLs, system prompt, temperature.
-   The URL lets the page be opened from any device on the LAN and pointed at
-   a remote Ollama instance (run `OLLAMA_HOST=0.0.0.0 ollama serve` there).
-   Phase 1 adds the FreeLLMAPI backend alongside Ollama. Both URL fields are
-   always present in the DOM; only one is visible at a time, controlled by
-   the [data-backend-section] hide/show logic below.
-   ──────────────────────────────────────────────────────────────────────────── */
-
-// Paint the backend pill (which is "active") and toggle the URL sections.
-function paintBackendPicker(){
-  if(!el.backendPicker) return;
-  const current = state.backend || 'ollama';
-  el.backendPicker.querySelectorAll('.backend-pill').forEach(p => {
-    const active = p.dataset.backend === current;
-    p.classList.toggle('active', active);
-    p.setAttribute('aria-checked', String(active));
-  });
-  // Show only the section matching the active backend.
-  document.querySelectorAll('[data-backend-section]').forEach(sec => {
-    sec.classList.toggle('hidden', sec.dataset.backendSection !== current);
-  });
-}
-
+/* Preferences modal — Ollama URL, system prompt, temperature, and voice. */
 function openPrefs(){
   el.prefsUrl.value = state.serverUrl || 'http://localhost:11434';
-  el.prefsFreellmapiUrl.value = state.freellmapiUrl || 'http://localhost:3001/v1';
-  el.prefsFreellmapiKey.value = state.freellmapiKey || '';
-  paintBackendPicker();
   el.prefsSystem.value = settings.systemPrompt || '';
   el.prefsTemp.value = (typeof settings.temperature === 'number') ? settings.temperature : '';
   el.prefsStt.value = settings.sttUrl || '';
@@ -4254,25 +4128,7 @@ function openPrefs(){
 }
 function closePrefs(){ el.prefsModal.classList.remove('show'); }
 
-// Click a backend pill → switch which section is visible. The state field
-// only commits on Save (mirrors how every other prefs field works).
-if(el.backendPicker){
-  el.backendPicker.addEventListener('click', e => {
-    const pill = e.target.closest('.backend-pill');
-    if(!pill) return;
-    const next = pill.dataset.backend;
-    if(!next) return;
-    state.backend = next;
-    paintBackendPicker();
-    // Reset the connection-test status line — the URL just changed
-    // context, so the prior "connected ✓" no longer applies.
-    el.prefsStatus.textContent = '';
-    el.prefsStatus.className = 'pref-status';
-  });
-}
-
-// Backend-aware connection test. Ollama pings /api/tags; FreeLLMAPI pings
-// /models with the bearer token. Both share the same 4s timeout.
+// Ollama connection test with a short timeout and actionable diagnostics.
 //
 // Diagnostic policy — `fetch()` rejects with `TypeError: Failed to fetch`
 // for *several* distinct reasons, all of which used to surface as one
@@ -4290,7 +4146,7 @@ if(el.backendPicker){
 //      connection refused, server down).
 //   4. Auth: the server replied (so CORS is fine) but rejected the
 //      request (401/403). The API key is missing or wrong.
-async function testBackendUrl(url, backend, apiKey){
+async function testBackendUrl(url){
   const u = (url || '').trim().replace(/\/+$/, '');
   if(!/^https?:\/\//i.test(u)) throw new Error('URL must start with http:// or https://');
   if(location.protocol === 'https:' && /^http:\/\//i.test(u)){
@@ -4299,14 +4155,12 @@ async function testBackendUrl(url, backend, apiKey){
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4000);
-  const backendName = backend === 'freellmapi' ? 'FreeLLMAPI router' : 'ollama server';
+  const backendName = 'ollama server';
   try{
-    const headers = {};
-    if(backend === 'freellmapi' && apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
-    const probe = backend === 'freellmapi' ? (u + '/models') : (u + '/api/tags');
+    const probe = u + '/api/tags';
     let r;
     try{
-      r = await fetch(probe, { signal: ctrl.signal, headers });
+      r = await fetch(probe, { signal: ctrl.signal });
     } catch(networkErr){
       // `fetch` rejected. Distinguish cross-origin from same-origin
       // failure so the message points at the right fix. We can't tell
@@ -4324,7 +4178,7 @@ async function testBackendUrl(url, backend, apiKey){
     if(!r.ok){
       // Server replied (so the network is fine). Status tells us why.
       if(r.status === 401 || r.status === 403){
-        throw new Error('Server returned ' + r.status + ' — the API key was rejected. Double-check the FreeLLMAPI unified key in Preferences.');
+        throw new Error('Server returned ' + r.status + '. Check the Ollama URL and origin settings.');
       }
       throw new Error('Server responded with ' + r.status + ' ' + (r.statusText || ''));
     }
@@ -4336,19 +4190,13 @@ async function testBackendUrl(url, backend, apiKey){
 }
 
 // Backwards-compatible wrapper. New code should call testBackendUrl directly.
-async function testOllamaUrl(url){ return testBackendUrl(url, 'ollama', ''); }
+async function testOllamaUrl(url){ return testBackendUrl(url); }
 
 el.prefsBtn.addEventListener('click', () => { closeSidebar(); openPrefs(); });
 el.prefsCancel.addEventListener('click', closePrefs);
 el.prefsModal.addEventListener('click', e => { if(e.target === el.prefsModal) closePrefs(); });
 el.prefsReset.addEventListener('click', () => {
-  // Reset only the URL field for the currently selected backend, so
-  // switching backends doesn't wipe FreeLLMAPI's URL or vice versa.
-  if(state.backend === 'freellmapi'){
-    el.prefsFreellmapiUrl.value = 'http://localhost:3001/v1';
-  } else {
-    el.prefsUrl.value = 'http://localhost:11434';
-  }
+  el.prefsUrl.value = 'http://localhost:11434';
   el.prefsStatus.textContent = '';
   el.prefsStatus.className = 'pref-status';
 });
@@ -4356,42 +4204,19 @@ el.prefsTest.addEventListener('click', async () => {
   el.prefsStatus.textContent = 'testing…';
   el.prefsStatus.className = 'pref-status';
   try{
-    const url = state.backend === 'freellmapi' ? el.prefsFreellmapiUrl.value : el.prefsUrl.value;
-    const key = state.backend === 'freellmapi' ? el.prefsFreellmapiKey.value : '';
-    await testBackendUrl(url, state.backend, key);
+    await testBackendUrl(el.prefsUrl.value);
     el.prefsStatus.textContent = 'connected ✓';
     el.prefsStatus.className = 'pref-status ok';
   }catch(e){
-    // FreeLLMAPI is a Phase 1 stub — a failed connection test should
-    // still let the user proceed. Ollama is required for actual chat
-    // so its failure is shown as a hard error.
-    if(state.backend === 'freellmapi'){
-      // Surface the specific reason inline (not just on hover) so the
-      // user can act on it without reaching for devtools. Common
-      // causes: page is on a different origin than the router (CORS),
-      // mixed-content block on https:// pages, router not running,
-      // API key rejected. The full diagnostic lives in testBackendUrl.
-      const reason = (e && e.message) ? e.message : 'unreachable';
-      el.prefsStatus.textContent = 'router not reachable — ' + reason + ' (Phase 1 stub still responds in chat)';
-      el.prefsStatus.className = 'pref-status';
-      el.prefsStatus.title = reason;
-    } else {
-      el.prefsStatus.textContent = 'failed — ' + (e.message || 'unreachable');
-      el.prefsStatus.className = 'pref-status err';
-    }
+    el.prefsStatus.textContent = 'failed — ' + (e.message || 'unreachable');
+    el.prefsStatus.className = 'pref-status err';
   }
 });
 el.prefsSave.addEventListener('click', async () => {
-  // Validate + persist both URLs up-front so the user gets clear feedback
-  // even if only one is currently visible.
   const newUrl = (el.prefsUrl.value || '').trim().replace(/\/+$/, '') || 'http://localhost:11434';
   if(!/^https?:\/\//i.test(newUrl)){ showError('Ollama URL must start with <code>http://</code> or <code>https://</code>'); return; }
-  const newFreellmapiUrl = (el.prefsFreellmapiUrl.value || '').trim().replace(/\/+$/, '') || 'http://localhost:3001/v1';
-  if(!/^https?:\/\//i.test(newFreellmapiUrl)){ showError('FreeLLMAPI URL must start with <code>http://</code> or <code>https://</code>'); return; }
   state.serverUrl = newUrl;
-  state.freellmapiUrl = newFreellmapiUrl;
-  state.freellmapiKey = (el.prefsFreellmapiKey.value || '').trim();
-  // backend was already mutated live by the pill click handler.
+  state.backend = 'ollama';
   const sys = el.prefsSystem.value.trim();
   settings.systemPrompt = sys || '';
   const t = parseFloat(el.prefsTemp.value);
@@ -4401,9 +4226,6 @@ el.prefsSave.addEventListener('click', async () => {
   saveState(); saveSettings();
   closePrefs();
   showToast('Preferences saved');
-  // Reload models for the now-active backend. Per FR8, the user can switch
-  // mid-conversation; existing chat history keeps its stored messages and
-  // is re-converted at request time by the active backend's adapter.
   loadModels(true);
 });
 // Prefs modal handlers are attached above (openPrefs/closePrefs/testOllamaUrl).
@@ -4460,7 +4282,7 @@ renderMessages();
 // Pre-populate the dropdown with the catalog so users see names instantly; loadModels() will
 // upgrade it with live data once the active backend's /models endpoint responds.
 state.models = [];
-populateModelDropdown(true, state.backend === 'freellmapi' ? FREELLMAPI_CATALOG : MODEL_CATALOG);
+populateModelDropdown(true, MODEL_CATALOG);
 
 // Detect OS and reflect correct shortcut modifier in the input hint.
 (function(){
