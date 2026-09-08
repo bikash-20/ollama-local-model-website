@@ -838,26 +838,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .msg-action.copied{color:var(--ok);}
   .msg-action svg{width:13px;height:13px;}
 .msg-stats{color:var(--text-low);font-family:'JetBrains Mono',monospace;font-size:12.5px;opacity:0.85;}
-  /* Router error message rendered into the assistant bubble when the
-     FreeLLMAPI adapter's parser throws a `router: …` error envelope.
-     Red-tinted text matches the rest of the app's error vocabulary
-     (banner, status dot). Inline so the bubble stays readable. */
-  .err-line{
-    color:var(--danger);
-    background:rgba(239,68,68,0.10);
-    border:1px solid rgba(239,68,68,0.30);
-    border-radius:8px;
-    padding:8px 12px;
-    font-size:14px;
-    line-height:1.5;
-  }
-  .err-line code{
-    background:rgba(0,0,0,0.25);
-    padding:1px 5px;
-    border-radius:4px;
-    font-family:'JetBrains Mono',monospace;
-    font-size:13px;
-  }
   .meta .pill{background:var(--glass-strong);border:1px solid var(--glass-border);padding:2px 8px;border-radius:99px;font-size:12.5px;}
   .meta .time{font-size:12.5px;opacity:0.7;}
 
@@ -1097,10 +1077,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     letter-spacing:0.2px;flex-wrap:wrap;
   }
   .metrics-bar.is-empty{opacity:0.55;}
-  /* Cloud (FreeLLMAPI) backend: RAM is meaningless for remote models,
-     hide the slot entirely. Ctx stays because it's sourced from the
-     model's own context_length metadata and is genuinely useful. */
-  .metrics-bar.backend-cloud #metricRam{display:none;}
   .metrics-bar .metric{
     display:inline-flex;align-items:center;gap:5px;min-width:0;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -1288,25 +1264,6 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   }
   .theme-swatch .sw-name{font-size:12.5px;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;}
 
-  /* Backend selector — two side-by-side pill buttons at the top of
-     Preferences. Same glass + accent-ring language as the theme swatches,
-     but horizontal so each pill can carry a one-line description. */
-  .backend-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 4px;}
-  .backend-pill{
-    display:flex;flex-direction:column;align-items:flex-start;gap:4px;
-    padding:10px 12px;border-radius:12px;cursor:pointer;text-align:left;
-    background:var(--glass-strong);border:1px solid var(--glass-border);
-    transition:all 0.15s ease;font-family:inherit;color:var(--text-mid);
-  }
-  .backend-pill:hover{background:var(--glass-hover);transform:translateY(-1px);}
-  .backend-pill.active{border-color:var(--aurora-a);box-shadow:0 0 0 2px color-mix(in srgb, var(--aurora-a) 22%, transparent);color:var(--text-hi);}
-  .backend-pill .bp-name{font-weight:600;font-size:15px;letter-spacing:0.2px;}
-  .backend-pill .bp-desc{font-size:12.5px;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;color:var(--text-low);}
-  .backend-pill.active .bp-desc{color:var(--text-mid);}
-  /* Sections of the prefs modal that depend on which backend is selected
-     are wrapped in a div with .backend-section + a data-for attribute.
-     JS toggles display based on state.backend. */
-  [data-backend-section].hidden{display:none;}
 
   .scroll-fade-top, .scroll-fade-bottom{position:absolute;left:0;right:0;height:24px;pointer-events:none;z-index:5;}
   .scroll-fade-top{top:0;background:linear-gradient(180deg, var(--bg-1), transparent);}
@@ -1747,10 +1704,7 @@ const MODEL_CATALOG = [
   { name: 'wizard-vicuna-uncensored:7b', family: 'wizard', parameterSize: '7B', quantization: 'Q4_K_M', format: 'gguf', description: 'Wizard Vicuna Uncensored 7B.' },
 ];
 
-// FreeLLMAPI static catalog — used as a fallback when /v1/models is
-// unreachable. Same shape as MODEL_CATALOG so humaniseModel() works
-// unchanged across both backends. Field names mirror Ollama's to keep
-// populateModelDropdown simple.
+// Legacy remote catalog retained only for migration compatibility.
 const FREELLMAPI_CATALOG = [
   // Google (10). Mirrors the provider keys configured in the local
   // FreeLLMAPI router (freeapi.db → api_keys, status=healthy), kept in
@@ -2001,7 +1955,7 @@ const el = {
   voiceStatus: document.getElementById('voiceStatus'),
 };
 
-let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 }, backend: 'ollama' };
+let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
@@ -2033,9 +1987,8 @@ function loadState(){
       if(parsed && Array.isArray(parsed.chats)) state = Object.assign(state, parsed);
     }
   }catch(e){}
-  // FreeLLMAPI is no longer a supported runtime backend. Reset older
-  // localStorage values so existing installs always use the local daemon.
-  state.backend = 'ollama';
+  // Reset older localStorage values so existing installs use the local daemon.
+  delete state.backend;
   try{
     const raw = localStorage.getItem(SETTINGS_KEY);
     if(raw){
@@ -2046,8 +1999,7 @@ function loadState(){
     settings.ttsUrl = (typeof settings.ttsUrl === 'string') ? settings.ttsUrl : '';
     settings.speakerOn = !!settings.speakerOn;
   }catch(e){}
-  // Remove configuration from the retired remote router so it cannot be
-  // resurrected by an older cached document or settings migration.
+  // Remove configuration from the retired remote router during migration.
   delete state.freellmapiUrl;
   delete state.freellmapiKey;
   delete settings.freellmapiUrl;
@@ -2929,14 +2881,6 @@ async function loadFreellmapiModels(silent){
 // All fetches are soft: failures just leave "—" in the slot.
 async function refreshMetrics(){
   if(!el.metricsBar) return;
-  // For FreeLLMAPI we don't hit /api/ps or /api/show (they don't exist).
-  // paintMetrics handles the cloud path: hides RAM via CSS and sources
-  // Ctx from the model metadata. Bail after painting so we don't waste
-  // a round trip.
-  if(state.backend !== 'ollama'){
-    paintMetrics({ model: state.activeModel || null });
-    return;
-  }
   const model = state.activeModel || el.modelSelect.value;
   if(!model){
     paintMetrics({ model: null, ram: 0, vram: 0, context: 0 });
@@ -3001,55 +2945,27 @@ function paintMetrics(m){
   el.metricModel.querySelector('.value').textContent = pretty;
   el.metricModel.title = modelName || '';
 
-  // RAM and Ctx are Ollama-only metrics (from /api/ps and /api/show).
-  // For FreeLLMAPI we hide RAM entirely — there's no "loaded in memory"
-  // — and source Ctx from the model's own context_length field on
-  // /v1/models. Ctx is genuinely backend-agnostic; RAM isn't.
-  const isLocal = state.backend === 'ollama';
-  el.metricsBar.classList.toggle('backend-cloud', !isLocal);
-
-  if(isLocal){
-    // RAM: prefer VRAM (actual GPU usage) over disk size when loaded;
-    // otherwise show the on-disk size and label it as "model weight".
-    let ramLabel = '—';
-    if(v.vram && v.vram > 0){
-      ramLabel = formatBytes(v.vram) + ' GPU';
-      el.metricRam.title = formatBytes(v.vram) + ' on GPU';
-    } else if(v.ram && v.ram > 0){
-      ramLabel = formatBytes(v.ram);
-      el.metricRam.title = formatBytes(v.ram) + ' loaded into memory';
-    } else if(modelName){
-      ramLabel = 'unloaded';
-      el.metricRam.title = 'Model isn\'t loaded in memory yet';
-    } else {
-      el.metricRam.title = '';
-    }
-    el.metricRam.querySelector('.value').textContent = ramLabel;
-
-    // Ctx from Ollama's /api/show (model_info.context_length).
-    if(v.context && v.context > 0){
-      el.metricContext.querySelector('.value').textContent = v.context.toLocaleString();
-      el.metricContext.title = 'Max context window: ' + v.context.toLocaleString() + ' tokens';
-    } else {
-      el.metricContext.querySelector('.value').textContent = '—';
-      el.metricContext.title = '';
-    }
+  // RAM: prefer VRAM (actual GPU usage) over disk size when loaded.
+  let ramLabel = '—';
+  if(v.vram && v.vram > 0){
+    ramLabel = formatBytes(v.vram) + ' GPU';
+    el.metricRam.title = formatBytes(v.vram) + ' on GPU';
+  } else if(v.ram && v.ram > 0){
+    ramLabel = formatBytes(v.ram);
+    el.metricRam.title = formatBytes(v.ram) + ' loaded into memory';
+  } else if(modelName){
+    ramLabel = 'unloaded';
+    el.metricRam.title = 'Model isn\'t loaded in memory yet';
   } else {
-    // Cloud (FreeLLMAPI): clear RAM (CSS hides the slot anyway) and
-    // pull Ctx from the model metadata if present.
-    el.metricRam.querySelector('.value').textContent = '—';
     el.metricRam.title = '';
-    const entry = state.models.find(x => x.name === modelName);
-    const ctx = entry && entry.parameterSize && /(\d[\d,]*)\s*ctx/i.test(entry.parameterSize)
-      ? Number(entry.parameterSize.replace(/[^\d]/g, ''))
-      : 0;
-    if(ctx > 0){
-      el.metricContext.querySelector('.value').textContent = ctx.toLocaleString();
-      el.metricContext.title = 'Max context window: ' + ctx.toLocaleString() + ' tokens';
-    } else {
-      el.metricContext.querySelector('.value').textContent = '—';
-      el.metricContext.title = '';
-    }
+  }
+  el.metricRam.querySelector('.value').textContent = ramLabel;
+  if(v.context && v.context > 0){
+    el.metricContext.querySelector('.value').textContent = v.context.toLocaleString();
+    el.metricContext.title = 'Max context window: ' + v.context.toLocaleString() + ' tokens';
+  } else {
+    el.metricContext.querySelector('.value').textContent = '—';
+    el.metricContext.title = '';
   }
 
   // Dim the bar until at least the model name resolves.
@@ -3076,7 +2992,6 @@ function paintMetrics(m){
 // scrolling through 39 entries.
 function populateModelDropdown(catalogOnly, catalog){
   catalog = catalog || MODEL_CATALOG;
-  const isLocal = state.backend === 'ollama';
   const previous = state.activeModel;
   const installedNames = new Set(state.models.map(m => m.name));
 
@@ -3136,7 +3051,7 @@ function populateModelDropdown(catalogOnly, catalog){
     }
     models.forEach(m => {
       if(!firstAvailableValue) firstAvailableValue = m.name;
-      el.modelPopupList.appendChild(buildModelRow(m, isLocal));
+      el.modelPopupList.appendChild(buildModelRow(m));
     });
   });
 
@@ -3175,7 +3090,7 @@ function providerLabel(key){
 
 // Build a single <div role="option"> row. Click and keyboard handlers
 // are wired here so the row owns its lifecycle.
-function buildModelRow(m, isLocal){
+function buildModelRow(m){
   const h = humaniseModel(m.name, m);
   const row = document.createElement('div');
   row.className = 'model-row';
@@ -3859,12 +3774,10 @@ async function sendMessage(text, opts){
   // surface a clear "ollama pull …" hint instead of letting the request die.
   // FreeLLMAPI doesn't have a "pull" step — any picked model is just sent to
   // the router, so skip the guard entirely for that backend.
-  if(state.backend === 'ollama'){
-    const installedNames = new Set(state.models.map(m => m.name));
-    if(!installedNames.has(model)){
-      showError('<strong>' + escapeHtml(model) + '</strong> isn\'t installed on this machine yet. Run <code>ollama pull ' + escapeHtml(model) + '</code> in Terminal, then hit refresh.');
-      return;
-    }
+  const installedNames = new Set(state.models.map(m => m.name));
+  if(!installedNames.has(model)){
+    showError('<strong>' + escapeHtml(model) + '</strong> isn\'t installed on this machine yet. Run <code>ollama pull ' + escapeHtml(model) + '</code> in Terminal, then hit refresh.');
+    return;
   }
 
   hideError();
@@ -4216,7 +4129,6 @@ el.prefsSave.addEventListener('click', async () => {
   const newUrl = (el.prefsUrl.value || '').trim().replace(/\/+$/, '') || 'http://localhost:11434';
   if(!/^https?:\/\//i.test(newUrl)){ showError('Ollama URL must start with <code>http://</code> or <code>https://</code>'); return; }
   state.serverUrl = newUrl;
-  state.backend = 'ollama';
   const sys = el.prefsSystem.value.trim();
   settings.systemPrompt = sys || '';
   const t = parseFloat(el.prefsTemp.value);

@@ -408,8 +408,12 @@ test.describe('Nocta smoke', () => {
     });
     await page.reload();
 
-    const backend = await page.evaluate(() => JSON.parse(localStorage.getItem('nocta_state_v1')).backend);
-    expect(backend).toBe('ollama');
+    const migrated = await page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('nocta_state_v1') || '{}');
+      const settings = JSON.parse(localStorage.getItem('nocta_settings_v1') || '{}');
+      return { hasBackend: Object.prototype.hasOwnProperty.call(state, 'backend'), hasRemoteUrl: Object.prototype.hasOwnProperty.call(settings, 'freellmapiUrl') };
+    });
+    expect(migrated).toEqual({ hasBackend: false, hasRemoteUrl: false });
     await page.locator('#modelSelectBtn').click();
     await expect(page.locator('#modelPopup')).toBeVisible();
     const scrollMetrics = await page.locator('#modelPopupList').evaluate((node) => ({
