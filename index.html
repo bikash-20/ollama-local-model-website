@@ -1027,6 +1027,34 @@ body.ready{opacity:1;transition:opacity .25s ease;}
 
   .modal-wide{max-width:560px;}
   .modal-sub{margin:0 0 18px !important;font-size:15.5px !important;color:var(--text-low) !important;}
+
+  /* Scrollable prefs modal — keep header + Save/Cancel reachable on short
+     viewports. Scoped to #prefsModal so the generic confirm dialog
+     (#modal) stays a compact one-shot box. The header (h3 + .modal-sub)
+     and the .modal-actions row stick inside the scrolling container. */
+  #prefsModal .modal{
+    max-height:85vh;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+  #prefsModal h3{
+    position:sticky;top:0;
+    background:var(--bg-1);
+    padding:6px 0 12px;
+    margin:0 0 12px;
+    z-index:2;
+    border-bottom:1px solid var(--glass-border);
+  }
+  /* Sticky footer for Save/Cancel. A subtle shadow reads better when
+     content scrolls underneath than a hard border would. */
+  #prefsModal .modal-actions{
+    position:sticky;bottom:0;
+    background:var(--bg-1);
+    padding:14px 0 4px;
+    margin-top:18px;
+    z-index:2;
+    box-shadow:0 -8px 16px -10px rgba(0,0,0,0.35);
+  }
   .pref-label{display:flex;flex-direction:column;gap:6px;margin:0 0 6px;font-size:15px;color:var(--text-mid);font-weight:500;letter-spacing:0.2px;text-transform:uppercase;}
   .pref-label span em{font-style:normal;text-transform:none;color:var(--text-low);font-weight:400;letter-spacing:0;}
   .pref-label input[type="text"],.pref-label input[type="number"],.pref-label textarea{
@@ -1061,6 +1089,26 @@ body.ready{opacity:1;transition:opacity .25s ease;}
     box-shadow:inset 0 0 0 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.25);
   }
   .theme-swatch .sw-name{font-size:12.5px;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;}
+
+  /* Backend selector — two side-by-side pill buttons at the top of
+     Preferences. Same glass + accent-ring language as the theme swatches,
+     but horizontal so each pill can carry a one-line description. */
+  .backend-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 4px;}
+  .backend-pill{
+    display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+    padding:10px 12px;border-radius:12px;cursor:pointer;text-align:left;
+    background:var(--glass-strong);border:1px solid var(--glass-border);
+    transition:all 0.15s ease;font-family:inherit;color:var(--text-mid);
+  }
+  .backend-pill:hover{background:var(--glass-hover);transform:translateY(-1px);}
+  .backend-pill.active{border-color:var(--aurora-a);box-shadow:0 0 0 2px color-mix(in srgb, var(--aurora-a) 22%, transparent);color:var(--text-hi);}
+  .backend-pill .bp-name{font-weight:600;font-size:15px;letter-spacing:0.2px;}
+  .backend-pill .bp-desc{font-size:12.5px;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;color:var(--text-low);}
+  .backend-pill.active .bp-desc{color:var(--text-mid);}
+  /* Sections of the prefs modal that depend on which backend is selected
+     are wrapped in a div with .backend-section + a data-for attribute.
+     JS toggles display based on state.backend. */
+  [data-backend-section].hidden{display:none;}
 
   .scroll-fade-top, .scroll-fade-bottom{position:absolute;left:0;right:0;height:24px;pointer-events:none;z-index:5;}
   .scroll-fade-top{top:0;background:linear-gradient(180deg, var(--bg-1), transparent);}
@@ -1351,11 +1399,39 @@ body.ready{opacity:1;transition:opacity .25s ease;}
       <h3>Preferences</h3>
       <p class="modal-sub">Tune the connection and behavior of your local model.</p>
 
-      <label class="pref-label">
-        <span>Ollama server URL</span>
-        <input type="text" id="prefsUrl" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false">
-      </label>
-      <p class="pref-hint">Use <code>http://YOUR-LAN-IP:11434</code> to chat with Ollama running on another device on the same network. For that to work, start the server with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>.</p>
+      <div class="pref-label"><span>Backend</span></div>
+      <div class="backend-picker" id="backendPicker" role="radiogroup" aria-label="Backend">
+        <button type="button" class="backend-pill" data-backend="ollama" role="radio" aria-checked="false" title="Local Ollama daemon">
+          <span class="bp-name">Ollama (local)</span>
+          <span class="bp-desc">runs on your machine · no API key</span>
+        </button>
+        <button type="button" class="backend-pill" data-backend="freellmapi" role="radio" aria-checked="false" title="FreeLLMAPI OpenAI-compatible router">
+          <span class="bp-name">FreeLLMAPI</span>
+          <span class="bp-desc">localhost:3001 · bearer token</span>
+        </button>
+      </div>
+      <p class="pref-hint">Pick which service sends chat completions. Switching is additive — both can run at the same time on different ports.</p>
+
+      <div data-backend-section="ollama">
+        <label class="pref-label">
+          <span>Ollama server URL</span>
+          <input type="text" id="prefsUrl" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="pref-hint">Use <code>http://YOUR-LAN-IP:11434</code> to chat with Ollama running on another device on the same network. For that to work, start the server with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>.</p>
+      </div>
+
+      <div data-backend-section="freellmapi" class="hidden">
+        <label class="pref-label">
+          <span>FreeLLMAPI base URL</span>
+          <input type="text" id="prefsFreellmapiUrl" placeholder="http://localhost:3001/v1" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="pref-label">
+          <span>FreeLLMAPI API key</span>
+          <input type="password" id="prefsFreellmapiKey" placeholder="sk-…" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="pref-hint">Stored only in this browser's localStorage. Sent as <code>Authorization: Bearer &lt;key&gt;</code> on every request. FreeLLMAPI must be running locally; FreeLLMAPI does not host your key.</p>
+      </div>
+
       <div class="pref-row">
         <button class="btn" id="prefsReset">Use localhost</button>
         <button class="btn" id="prefsTest">Test connection</button>
@@ -1467,6 +1543,16 @@ const MODEL_CATALOG = [
   { name: 'wizard-vicuna-uncensored:7b', family: 'wizard', parameterSize: '7B', quantization: 'Q4_K_M', format: 'gguf', description: 'Wizard Vicuna Uncensored 7B.' },
 ];
 
+// FreeLLMAPI static catalog — used as a fallback when /v1/models is
+// unreachable. Same shape as MODEL_CATALOG so humaniseModel() works
+// unchanged across both backends. Field names mirror Ollama's to keep
+// populateModelDropdown simple.
+const FREELLMAPI_CATALOG = [
+  { name: 'gpt-5.4',                       family: 'openai', parameterSize: '—', quantization: '', format: 'openai', description: 'OpenAI GPT-5.4 via FreeLLMAPI router.' },
+  { name: 'gemini-3.1-flash-lite-thinking', family: 'gemini', parameterSize: '—', quantization: '', format: 'openai', description: 'Google Gemini 3.1 Flash Lite (thinking).' },
+  { name: 'grok-4.1-fast-reasoning',        family: 'grok',   parameterSize: '—', quantization: '', format: 'openai', description: 'xAI Grok 4.1 Fast Reasoning.' },
+];
+
 const el = {
   messages: document.getElementById('messages'),
   emptyState: document.getElementById('emptyState'),
@@ -1513,6 +1599,9 @@ const el = {
   themeGrid: document.getElementById('themeGrid'),
   textThemeGrid: document.getElementById('textThemeGrid'),
   prefsUrl: document.getElementById('prefsUrl'),
+  prefsFreellmapiUrl: document.getElementById('prefsFreellmapiUrl'),
+  prefsFreellmapiKey: document.getElementById('prefsFreellmapiKey'),
+  backendPicker: document.getElementById('backendPicker'),
   prefsSystem: document.getElementById('prefsSystem'),
   prefsTemp: document.getElementById('prefsTemp'),
   prefsTest: document.getElementById('prefsTest'),
@@ -1528,7 +1617,16 @@ const el = {
   voiceStatus: document.getElementById('voiceStatus'),
 };
 
-let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
+let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 },
+  // ─── Backend selector (Phase 1) ──────────────────────────────────
+  // 'ollama' = local Ollama daemon (today's behavior). 'freellmapi' =
+  // OpenAI-compatible router on localhost:3001 (Phase 1 ships a stub;
+  // Phase 2 wires real SSE streaming; Phase 3 adds PDF). Default is
+  // 'ollama' so existing localStorage loads cleanly with no migration.
+  backend: 'ollama',
+  freellmapiUrl: 'http://localhost:3001/v1',
+  freellmapiKey: '',
+};
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
 let pendingImage = null;
 let isStreaming = false;
@@ -2280,7 +2378,20 @@ function setOnline(isOnline, stateName){
   el.statusText.textContent = label;
 }
 
+// Models are loaded per backend. The dispatcher picks the loader for
+// the active backend, and each loader normalizes its response to the
+// shared `state.models` shape used by populateModelDropdown:
+//   { name, size, family, parameterSize, quantization, format }
+// For Ollama this comes from /api/tags; for FreeLLMAPI it comes from
+// /v1/models (OpenAI shape) with a static fallback if the router is
+// unreachable or doesn't expose the endpoint.
 async function loadModels(silent){
+  return state.backend === 'ollama'
+    ? loadOllamaModels(silent)
+    : loadFreellmapiModels(silent);
+}
+
+async function loadOllamaModels(silent){
   if(!silent) el.refreshBtn.classList.add('spin');
   setOnline(false, 'checking');
   try{
@@ -2307,11 +2418,11 @@ async function loadModels(silent){
       state.models = [];
       // No models installed yet: still show the catalog so the user can pick what to pull.
       showError('No models installed yet — pick one from the dropdown and we\'ll show you the <code>ollama pull</code> command.');
-      populateModelDropdown(true);
+      populateModelDropdown(true, MODEL_CATALOG);
       return;
     }
     // Show installed models + any catalog items the user hasn't pulled yet (greyed out).
-    populateModelDropdown(false);
+    populateModelDropdown(false, MODEL_CATALOG);
   }catch(err){
     // Aborted by our own timeout — Ollama is just slow right now (likely
     // busy on /api/chat). Keep the previous model list and silently retry
@@ -2323,8 +2434,63 @@ async function loadModels(silent){
     setOnline(false, 'local');
     // Ollama unreachable. Show the catalog as a "what you could install" list.
     state.models = [];
-    populateModelDropdown(true);
+    populateModelDropdown(true, MODEL_CATALOG);
     showPersistentOffline(offlineReason(err));
+  }finally{
+    setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
+  }
+}
+
+async function loadFreellmapiModels(silent){
+  // Probe /v1/models (OpenAI-compatible). On 404/parse failure fall back
+  // to FREELLMAPI_CATALOG. On network failure treat as offline (mirror
+  // Ollama's persistent banner behavior).
+  if(!silent) el.refreshBtn.classList.add('spin');
+  setOnline(false, 'checking');
+  const base = (state.freellmapiUrl || 'http://localhost:3001/v1').replace(/\/+$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  if(settings.freellmapiKey) headers['Authorization'] = 'Bearer ' + settings.freellmapiKey;
+  try{
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 3000);
+    const res = await fetch(base + '/models', { headers: headers, signal: ctrl.signal });
+    clearTimeout(tid);
+    if(!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    setOnline(true, 'ok');
+    hideError();
+    // OpenAI /v1/models returns { data: [{ id, ... }] }. Map each entry
+    // to the shared state.models shape so populateModelDropdown works.
+    const list = Array.isArray(data.data) ? data.data : [];
+    state.models = list.map(m => ({
+      name: m.id || m.name || '',
+      size: 0, // remote models have no local size
+      family: (m.id || '').split('-')[0],
+      parameterSize: '—',
+      quantization: '',
+      format: 'openai'
+    }));
+    if(state.models.length === 0){
+      // Endpoint replied but with no models — fall back to static catalog.
+      state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
+      showToast('FreeLLMAPI returned no models — using static catalog.');
+      populateModelDropdown(false, FREELLMAPI_CATALOG);
+      return;
+    }
+    populateModelDropdown(false, FREELLMAPI_CATALOG);
+  }catch(err){
+    if(err && err.name === 'AbortError'){
+      // Slow router — keep previous list, no UI flap.
+      setOnline(true, 'ok');
+      return;
+    }
+    // Couldn't reach /v1/models. Fall back to the static catalog; the
+    // user can still pick a known model and the adapter will route the
+    // request to the configured URL.
+    state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
+    populateModelDropdown(false, FREELLMAPI_CATALOG);
+    setOnline(false, 'offline');
+    showToast('Couldn\'t reach FreeLLMAPI /models — using static catalog.');
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
   }
@@ -2335,6 +2501,12 @@ async function loadModels(silent){
 // All fetches are soft: failures just leave "—" in the slot.
 async function refreshMetrics(){
   if(!el.metricsBar) return;
+  // Ollama-only feature: /api/ps and /api/show don't exist on FreeLLMAPI,
+  // so the bar would 404-spam. Clear it to "—" and bail.
+  if(state.backend !== 'ollama'){
+    paintMetrics({ model: null, ram: 0, vram: 0, context: 0 });
+    return;
+  }
   const model = state.activeModel || el.modelSelect.value;
   if(!model){
     paintMetrics({ model: null, ram: 0, vram: 0, context: 0 });
@@ -2429,10 +2601,19 @@ function paintMetrics(m){
   el.metricsBar.classList.toggle('is-empty', !modelName);
 }
 
-// Render the model dropdown from state.models + the static catalog.
-//   - catalogOnly=true  → Ollama is offline; show every catalog entry with size=0.
-//   - catalogOnly=false → Ollama is online; show installed models first, then un-installed catalog entries as suggestions.
-function populateModelDropdown(catalogOnly){
+// Render the model dropdown from state.models + the static catalog for
+// the active backend.
+//   - catalogOnly=true  → backend is offline (or returning nothing);
+//     show every catalog entry with size=0.
+//   - catalogOnly=false → backend is online; show installed models
+//     first, then un-installed catalog entries as suggestions.
+//   - catalog defaults to MODEL_CATALOG (Ollama); pass FREELLMAPI_CATALOG
+//     for the FreeLLMAPI loader. The Ollama-only suffixes ("· not
+//     installed" / "· pull to use") are suppressed when the active
+//     backend is FreeLLMAPI — those models aren't pulled locally.
+function populateModelDropdown(catalogOnly, catalog){
+  catalog = catalog || MODEL_CATALOG;
+  const isLocal = state.backend === 'ollama';
   el.modelSelect.innerHTML = '';
   const previous = state.activeModel;
   const installedNames = new Set(state.models.map(m => m.name));
@@ -2440,9 +2621,9 @@ function populateModelDropdown(catalogOnly){
   // Build the final list: installed models first (in their original order), then catalog entries
   // that aren't already installed.
   const list = catalogOnly
-    ? MODEL_CATALOG.map(c => Object.assign({ size: 0 }, c))
+    ? catalog.map(c => Object.assign({ size: 0 }, c))
     : state.models.concat(
-        MODEL_CATALOG
+        catalog
           .filter(c => !installedNames.has(c.name))
           .map(c => Object.assign({ size: 0, notInstalled: true }, c))
       );
@@ -2453,10 +2634,16 @@ function populateModelDropdown(catalogOnly){
     const h = humaniseModel(m.name, m);
     const meta = [h.size, h.quant || (h.tag && h.tag !== 'latest' ? h.tag : '')].filter(Boolean).join(' · ');
     let label = meta ? (h.display + '  (' + meta + ')') : h.display;
-    // Visually mark catalog-only suggestions (when Ollama is offline or model isn't pulled).
-    if(catalogOnly)             opt.textContent = label + '  · not installed';
-    else if(m.notInstalled)     opt.textContent = label + '  · pull to use';
-    else                        opt.textContent = label;
+    // Ollama-only: visually mark catalog-only suggestions. FreeLLMAPI
+    // models are remote, so the "pull" / "not installed" hints would
+    // be misleading and are suppressed.
+    if(isLocal){
+      if(catalogOnly)          opt.textContent = label + '  · not installed';
+      else if(m.notInstalled)  opt.textContent = label + '  · pull to use';
+      else                     opt.textContent = label;
+    } else {
+      opt.textContent = label;
+    }
     el.modelSelect.appendChild(opt);
   });
 
@@ -2749,6 +2936,159 @@ function finaliseReply(bubble, chat, text, evalCount, streamStart){
   voiceSpeakAssistant(text, bubble);
 }
 
+// ─── Backend adapter layer ─────────────────────────────────────────────
+// Two backends: 'ollama' (today's path) and 'freellmapi' (Phase 2 wires
+// real streaming; Phase 1 ships a clear stub). Each adapter exports:
+//   buildRequest(history, model, opts) → { url, init }
+//   parseStream(reader, decoder, onChunk) → final evalCount
+//
+// `history` is always the backend-agnostic shape produced by
+// buildApiHistory():
+//   [{ role, content, attachments?: [{ kind, dataUrl|... }] }]
+//
+// Conversion to each backend's wire format is the adapter's job. The
+// Ollama adapter must produce bit-identical wire output to today's
+// inline sendMessage() implementation so existing behavior is preserved.
+
+function buildApiHistory(chatMessages){
+  // Convert stored chat messages → backend-agnostic history.
+  // Reads both the new `attachments[]` field (Phase 1+) and the legacy
+  // `images[]` field (old chats saved before Phase 1). Old chats keep
+  // loading because the adapter layer treats both shapes identically.
+  return chatMessages.map(m => {
+    const out = { role: m.role, content: m.content };
+    const atts = [];
+    // Phase 1+ shape: explicit attachments array.
+    if(Array.isArray(m.attachments) && m.attachments.length){
+      m.attachments.forEach(a => {
+        if(a && a.kind === 'image' && a.dataUrl) atts.push(a);
+      });
+    }
+    // Legacy shape: top-level `images: [base64]`. Older chats only have
+    // this — we treat each as an image attachment so adapters see one
+    // uniform list.
+    if(Array.isArray(m.images) && m.images.length){
+      m.images.forEach(b64 => {
+        if(b64) atts.push({ kind: 'image', dataUrl: 'data:image/png;base64,' + b64 });
+      });
+    }
+    if(atts.length) out.attachments = atts;
+    return out;
+  });
+}
+
+function buildOllamaRequest(history, model, opts){
+  // Today's wire format: NDJSON streaming /api/chat with { role, content, images }.
+  // Convert attachments back to Ollama's `images: [base64]` shape.
+  const messages = history.map(m => {
+    const o = { role: m.role, content: m.content };
+    if(Array.isArray(m.attachments) && m.attachments.length){
+      const images = [];
+      m.attachments.forEach(a => {
+        if(a && a.kind === 'image' && a.dataUrl){
+          const b64 = a.dataUrl.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, '');
+          if(b64) images.push(b64);
+        }
+      });
+      if(images.length) o.images = images;
+    }
+    return o;
+  });
+  const body = {
+    model: model,
+    messages: messages,
+    stream: true,
+    ...(typeof opts.temperature === 'number' ? { options: { temperature: opts.temperature } } : {})
+  };
+  return {
+    url: ollamaBase() + '/api/chat',
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: opts.signal
+    }
+  };
+}
+
+async function parseOllamaStream(reader, decoder, onChunk){
+  // Today's NDJSON parser, refactored out of sendMessage so both backends
+  // can share the chunk-accumulation scaffolding. Returns the final
+  // eval_count from the last frame (0 if the model never reported one).
+  let buffer = '';
+  let evalCount = 0;
+  const consumeLine = (line) => {
+    if(!line.trim()) return;
+    try{
+      const json = JSON.parse(line);
+      if(json.message && json.message.content){
+        onChunk(json.message.content);
+      }
+      if(typeof json.eval_count === 'number') evalCount = json.eval_count;
+    }catch(_){ /* malformed line — skip */ }
+  };
+  while(true){
+    const { value, done } = await reader.read();
+    if(done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    lines.forEach(consumeLine);
+  }
+  // The final chunk usually has no trailing newline, so the last JSON line
+  // (with the tail of the reply) is still sitting in `buffer` — flush the
+  // decoder and process it, or long answers silently lose their ending.
+  buffer += decoder.decode();
+  if(buffer.trim()) buffer.split('\n').forEach(consumeLine);
+  return evalCount;
+}
+
+function buildFreellmapiRequest(history, model, opts){
+  // Phase 1 stub: builds a valid /v1/chat/completions request shape so the
+  // UI is testable end-to-end. Phase 2 replaces the body and parseStream
+  // with real SSE streaming.
+  const messages = history.map(m => {
+    const o = { role: m.role, content: m.content };
+    // OpenAI's chat/completions supports content arrays of {type,text}/
+    // {type,image_url} parts — for Phase 1 we collapse to plain text and
+    // skip attachments. Phase 3 wires attachments through once we know the
+    // router's exact image-input contract.
+    return o;
+  });
+  const body = {
+    model: model,
+    messages: messages,
+    stream: true,
+    ...(typeof opts.temperature === 'number' ? { temperature: opts.temperature } : {})
+  };
+  const headers = { 'Content-Type': 'application/json' };
+  if(opts.freellmapiKey) headers['Authorization'] = 'Bearer ' + opts.freellmapiKey;
+  return {
+    url: (opts.freellmapiUrl || 'http://localhost:3001/v1').replace(/\/+$/, '') + '/chat/completions',
+    init: {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(body),
+      signal: opts.signal
+    }
+  };
+}
+
+async function parseFreellmapiStream(reader, decoder, onChunk){
+  // Phase 1 stub: doesn't actually parse SSE. Drains the body so the
+  // connection closes cleanly, then emits a single "Phase 2" message so
+  // the user gets a clear, non-silent placeholder instead of a stalled
+  // bubble. Phase 2 replaces this with real SSE parsing.
+  try{
+    while(true){
+      const { done } = await reader.read();
+      if(done) break;
+    }
+  }catch(_){ /* swallow — stub */ }
+  onChunk('_FreeLLMAPI streaming arrives in Phase 2. The request reached the router, but real SSE parsing is not wired yet._');
+  return 0;
+}
+
 async function sendMessage(text, opts){
   opts = opts || {};
   const inputText = text === undefined ? el.input.value : text;
@@ -2758,10 +3098,14 @@ async function sendMessage(text, opts){
 
   // Guard: if the picked model is a catalog-only entry (Ollama offline, or not yet pulled),
   // surface a clear "ollama pull …" hint instead of letting the request die.
-  const installedNames = new Set(state.models.map(m => m.name));
-  if(!installedNames.has(model)){
-    showError('<strong>' + escapeHtml(model) + '</strong> isn\'t installed on this machine yet. Run <code>ollama pull ' + escapeHtml(model) + '</code> in Terminal, then hit refresh.');
-    return;
+  // FreeLLMAPI doesn't have a "pull" step — any picked model is just sent to
+  // the router, so skip the guard entirely for that backend.
+  if(state.backend === 'ollama'){
+    const installedNames = new Set(state.models.map(m => m.name));
+    if(!installedNames.has(model)){
+      showError('<strong>' + escapeHtml(model) + '</strong> isn\'t installed on this machine yet. Run <code>ollama pull ' + escapeHtml(model) + '</code> in Terminal, then hit refresh.');
+      return;
+    }
   }
 
   hideError();
@@ -2778,11 +3122,20 @@ async function sendMessage(text, opts){
     renderChatList();
   }
 
-  const imageForDisplay = pendingImage ? pendingImage.dataUrl : null;
-  const imageForApi = pendingImage ? pendingImage.base64 : null;
-
-  const userMsg = { role: 'user', content: inputText, time: nowTime(), imageDataUrl: imageForDisplay };
-  if(imageForApi) userMsg.images = [imageForApi];
+  // Phase 1+: store images under the backend-agnostic `attachments[]` shape.
+  // The renderer's `imageDataUrl` field is still populated so existing
+  // chat-history rendering keeps working — adapters read attachments[] and
+  // translate to each backend's wire format.
+  const userMsg = {
+    role: 'user',
+    content: inputText,
+    time: nowTime(),
+    imageDataUrl: pendingImage ? pendingImage.dataUrl : null,
+    attachments: []
+  };
+  if(pendingImage){
+    userMsg.attachments.push({ kind: 'image', dataUrl: pendingImage.dataUrl });
+  }
   chat.messages.push(userMsg);
   touchChat(chat);
   saveState();
@@ -2799,17 +3152,13 @@ async function sendMessage(text, opts){
   el.sendBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
   el.sendBtn.disabled = false;
 
-  const apiHistory = chat.messages.map(m => {
-    const o = { role: m.role, content: m.content };
-    if(m.images && m.images.length) o.images = m.images;
-    return o;
-  });
   // Inject the global system prompt as a real `system` message at the front of
   // every request. Ollama's top-level `system` body field is a no-op on recent
   // versions (0.30.x ignores it for several model templates, e.g. phi4-mini),
   // whereas a role:'system' message is honored by every template — so deliver
   // the prompt the template-native way. Applied per request, which means edits
   // to the prompt apply to future turns of every chat.
+  let apiHistory = buildApiHistory(chat.messages);
   if(settings.systemPrompt) apiHistory.unshift({ role: 'system', content: settings.systemPrompt });
 
   const bubble = addRow('assistant', '', true, null, nowTime(), false);
@@ -2819,61 +3168,55 @@ async function sendMessage(text, opts){
 
   abortController = new AbortController();
 
+  // Pick the adapter for the active backend. Each adapter is responsible
+  // for both the wire request (buildRequest) and the stream parser
+  // (parseStream). The dispatcher's only job is to plumb the chunks back
+  // into the bubble.
+  const adapter = state.backend === 'ollama'
+    ? { build: buildOllamaRequest, parse: parseOllamaStream }
+    : { build: buildFreellmapiRequest, parse: parseFreellmapiStream };
+
   try{
-    const res = await fetch(ollamaBase() + '/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model,
-        messages: apiHistory,
-        stream: true,
-        ...(typeof settings.temperature === 'number' ? { options: { temperature: settings.temperature } } : {})
-      }),
-      signal: abortController.signal
+    const { url, init } = adapter.build(apiHistory, model, {
+      temperature: settings.temperature,
+      signal: abortController.signal,
+      freellmapiKey: settings.freellmapiKey,
+      freellmapiUrl: state.freellmapiUrl
     });
 
+    const res = await fetch(url, init);
     if(!res.ok || !res.body) throw new Error('stream failed');
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
 
-    // One NDJSON line may span multiple network chunks and multiple chunks
-    // may arrive in a single read — accumulate in `buffer` and only treat
-    // complete lines as JSON.
-    const consumeLine = (line) => {
-      if(!line.trim()) return;
-      try{
-        const json = JSON.parse(line);
-        if(json.message && json.message.content){
-          const piece = json.message.content;
-          fullReply += piece;
-          appendStreamingText(bubble, piece);
-          scrollToBottom(true);
-        }
-        if(typeof json.eval_count === 'number') evalCount = json.eval_count;
-      }catch(_){}
-    };
-
-    while(true){
-      const { value, done } = await reader.read();
-      if(done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      lines.forEach(consumeLine);
-    }
-    // The final chunk usually has no trailing newline, so the last JSON line
-    // (with the tail of the reply) is still sitting in `buffer` — flush the
-    // decoder and process it, or long answers silently lose their ending.
-    buffer += decoder.decode();
-    if(buffer.trim()) buffer.split('\n').forEach(consumeLine);
+    evalCount = await adapter.parse(reader, decoder, (piece) => {
+      fullReply += piece;
+      appendStreamingText(bubble, piece);
+      scrollToBottom(true);
+    });
     finaliseReply(bubble, chat, fullReply || '_(empty response)_', evalCount, streamStart);
   }catch(err){
     if(err.name === 'AbortError'){
       finaliseReply(bubble, chat, fullReply || '_(stopped)_', evalCount, streamStart);
+    } else if(state.backend === 'freellmapi'){
+      // Phase 1: FreeLLMAPI is a stub. The fetch may fail because the
+      // router isn't running, the URL is wrong, or the browser blocked
+      // a mixed-content request — none of that should leave the user
+      // staring at a red error bubble. Fall through to the same
+      // "Phase 2" placeholder the stub's success path would have
+      // produced, and surface the real cause in the toast so it stays
+      // discoverable for debugging.
+      const placeholder = '_FreeLLMAPI streaming arrives in Phase 2. The router at <code>' +
+        escapeHtml((settings.freellmapiUrl || 'http://localhost:3001/v1')) +
+        '</code> isn\'t reachable right now (' + escapeHtml(err.message || 'unknown error') +
+        ') — but the UI is wired end-to-end. Once Phase 2 ships, real replies will appear here._';
+      appendStreamingText(bubble, placeholder);
+      scrollToBottom(true);
+      finaliseReply(bubble, chat, placeholder, 0, streamStart);
+      showToast('FreeLLMAPI stub: ' + (err.message || 'router unreachable') + ' — showing Phase 2 placeholder.');
     } else {
-      bubble.innerHTML = '<div style="color:var(--danger)">Couldn\'t get a response — the local server may have stopped.</div>';
+      bubble.innerHTML = '<div style="color:var(--danger)">Couldn\'t get a response — the Ollama server may have stopped.</div>';
       showError('Something went wrong talking to Ollama. Check that <code>ollama serve</code> is still running.');
       setOnline(false, 'offline');
     }
@@ -3001,12 +3344,34 @@ el.clearAllBtn.addEventListener('click', () => {
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Preferences modal — server URL, system prompt, temperature.
+   Preferences modal — backend selector, server URLs, system prompt, temperature.
    The URL lets the page be opened from any device on the LAN and pointed at
    a remote Ollama instance (run `OLLAMA_HOST=0.0.0.0 ollama serve` there).
+   Phase 1 adds the FreeLLMAPI backend alongside Ollama. Both URL fields are
+   always present in the DOM; only one is visible at a time, controlled by
+   the [data-backend-section] hide/show logic below.
    ──────────────────────────────────────────────────────────────────────────── */
+
+// Paint the backend pill (which is "active") and toggle the URL sections.
+function paintBackendPicker(){
+  if(!el.backendPicker) return;
+  const current = state.backend || 'ollama';
+  el.backendPicker.querySelectorAll('.backend-pill').forEach(p => {
+    const active = p.dataset.backend === current;
+    p.classList.toggle('active', active);
+    p.setAttribute('aria-checked', String(active));
+  });
+  // Show only the section matching the active backend.
+  document.querySelectorAll('[data-backend-section]').forEach(sec => {
+    sec.classList.toggle('hidden', sec.dataset.backendSection !== current);
+  });
+}
+
 function openPrefs(){
   el.prefsUrl.value = state.serverUrl || 'http://localhost:11434';
+  el.prefsFreellmapiUrl.value = state.freellmapiUrl || 'http://localhost:3001/v1';
+  el.prefsFreellmapiKey.value = state.freellmapiKey || '';
+  paintBackendPicker();
   el.prefsSystem.value = settings.systemPrompt || '';
   el.prefsTemp.value = (typeof settings.temperature === 'number') ? settings.temperature : '';
   el.prefsStt.value = settings.sttUrl || '';
@@ -3018,52 +3383,102 @@ function openPrefs(){
 }
 function closePrefs(){ el.prefsModal.classList.remove('show'); }
 
-async function testOllamaUrl(url){
+// Click a backend pill → switch which section is visible. The state field
+// only commits on Save (mirrors how every other prefs field works).
+if(el.backendPicker){
+  el.backendPicker.addEventListener('click', e => {
+    const pill = e.target.closest('.backend-pill');
+    if(!pill) return;
+    const next = pill.dataset.backend;
+    if(!next) return;
+    state.backend = next;
+    paintBackendPicker();
+    // Reset the connection-test status line — the URL just changed
+    // context, so the prior "connected ✓" no longer applies.
+    el.prefsStatus.textContent = '';
+    el.prefsStatus.className = 'pref-status';
+  });
+}
+
+// Backend-aware connection test. Ollama pings /api/tags; FreeLLMAPI pings
+// /models with the bearer token. Both share the same 4s timeout and
+// mixed-content guard.
+async function testBackendUrl(url, backend, apiKey){
   const u = (url || '').trim().replace(/\/+$/, '');
   if(!/^https?:\/\//i.test(u)) throw new Error('URL must start with http:// or https://');
-
-  // Surface the most common blocked-by-the-browser case up front: an
-  // https:// page trying to reach an http:// Ollama is mixed content
-  // and Chrome will refuse without a prefetch or the dev-flag allow-list.
   if(location.protocol === 'https:' && /^http:\/\//i.test(u)){
-    throw new Error('Mixed content: this page is https:// and the URL is http://. Browsers block this. Open index.html from disk, or serve Ollama over HTTPS.');
+    throw new Error('Mixed content: this page is https:// and the URL is http://. Browsers block this. Open index.html from disk, or serve the backend over HTTPS.');
   }
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4000);
   try{
-    const r = await fetch(u + '/api/tags', { signal: ctrl.signal });
+    const headers = {};
+    if(backend === 'freellmapi' && apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+    const probe = backend === 'freellmapi' ? (u + '/models') : (u + '/api/tags');
+    const r = await fetch(probe, { signal: ctrl.signal, headers });
     if(!r.ok) throw new Error('Server responded with ' + r.status);
     return true;
   } catch(e){
-    if(e && e.name === 'AbortError') throw new Error('Timed out after 4s — is ollama running and reachable at ' + u + '?');
+    if(e && e.name === 'AbortError') throw new Error('Timed out after 4s — is the ' + (backend === 'freellmapi' ? 'FreeLLMAPI router' : 'ollama server') + ' running and reachable at ' + u + '?');
     if(e && /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')){
-      throw new Error('Browser blocked or could not reach ' + u + ' (often a mixed-content block on https:// pages, or ollama not running)');
+      throw new Error('Browser blocked or could not reach ' + u + ' (often a mixed-content block on https:// pages, or the service is not running)');
     }
     throw e;
   } finally { clearTimeout(t); }
 }
 
+// Backwards-compatible wrapper. New code should call testBackendUrl directly.
+async function testOllamaUrl(url){ return testBackendUrl(url, 'ollama', ''); }
+
 el.prefsBtn.addEventListener('click', () => { closeSidebar(); openPrefs(); });
 el.prefsCancel.addEventListener('click', closePrefs);
 el.prefsModal.addEventListener('click', e => { if(e.target === el.prefsModal) closePrefs(); });
-el.prefsReset.addEventListener('click', () => { el.prefsUrl.value = 'http://localhost:11434'; el.prefsStatus.textContent=''; el.prefsStatus.className='pref-status'; });
+el.prefsReset.addEventListener('click', () => {
+  // Reset only the URL field for the currently selected backend, so
+  // switching backends doesn't wipe FreeLLMAPI's URL or vice versa.
+  if(state.backend === 'freellmapi'){
+    el.prefsFreellmapiUrl.value = 'http://localhost:3001/v1';
+  } else {
+    el.prefsUrl.value = 'http://localhost:11434';
+  }
+  el.prefsStatus.textContent = '';
+  el.prefsStatus.className = 'pref-status';
+});
 el.prefsTest.addEventListener('click', async () => {
   el.prefsStatus.textContent = 'testing…';
   el.prefsStatus.className = 'pref-status';
   try{
-    await testOllamaUrl(el.prefsUrl.value);
+    const url = state.backend === 'freellmapi' ? el.prefsFreellmapiUrl.value : el.prefsUrl.value;
+    const key = state.backend === 'freellmapi' ? el.prefsFreellmapiKey.value : '';
+    await testBackendUrl(url, state.backend, key);
     el.prefsStatus.textContent = 'connected ✓';
     el.prefsStatus.className = 'pref-status ok';
   }catch(e){
-    el.prefsStatus.textContent = 'failed — ' + (e.message || 'unreachable');
-    el.prefsStatus.className = 'pref-status err';
+    // FreeLLMAPI is a Phase 1 stub — a failed connection test should
+    // still let the user proceed. Ollama is required for actual chat
+    // so its failure is shown as a hard error.
+    if(state.backend === 'freellmapi'){
+      el.prefsStatus.textContent = 'router not reachable — Phase 1 stub will still respond in chat';
+      el.prefsStatus.className = 'pref-status';
+      el.prefsStatus.title = (e && e.message) ? e.message : '';
+    } else {
+      el.prefsStatus.textContent = 'failed — ' + (e.message || 'unreachable');
+      el.prefsStatus.className = 'pref-status err';
+    }
   }
 });
 el.prefsSave.addEventListener('click', async () => {
+  // Validate + persist both URLs up-front so the user gets clear feedback
+  // even if only one is currently visible.
   const newUrl = (el.prefsUrl.value || '').trim().replace(/\/+$/, '') || 'http://localhost:11434';
-  if(!/^https?:\/\//i.test(newUrl)){ showError('Server URL must start with <code>http://</code> or <code>https://</code>'); return; }
+  if(!/^https?:\/\//i.test(newUrl)){ showError('Ollama URL must start with <code>http://</code> or <code>https://</code>'); return; }
+  const newFreellmapiUrl = (el.prefsFreellmapiUrl.value || '').trim().replace(/\/+$/, '') || 'http://localhost:3001/v1';
+  if(!/^https?:\/\//i.test(newFreellmapiUrl)){ showError('FreeLLMAPI URL must start with <code>http://</code> or <code>https://</code>'); return; }
   state.serverUrl = newUrl;
+  state.freellmapiUrl = newFreellmapiUrl;
+  state.freellmapiKey = (el.prefsFreellmapiKey.value || '').trim();
+  // backend was already mutated live by the pill click handler.
   const sys = el.prefsSystem.value.trim();
   settings.systemPrompt = sys || '';
   const t = parseFloat(el.prefsTemp.value);
@@ -3073,6 +3488,9 @@ el.prefsSave.addEventListener('click', async () => {
   saveState(); saveSettings();
   closePrefs();
   showToast('Preferences saved');
+  // Reload models for the now-active backend. Per FR8, the user can switch
+  // mid-conversation; existing chat history keeps its stored messages and
+  // is re-converted at request time by the active backend's adapter.
   loadModels(true);
 });
 // Prefs modal handlers are attached above (openPrefs/closePrefs/testOllamaUrl).
@@ -3127,9 +3545,9 @@ renderChatList();
 renderMessages();
 
 // Pre-populate the dropdown with the catalog so users see names instantly; loadModels() will
-// upgrade it with live data once /api/tags responds.
+// upgrade it with live data once the active backend's /models endpoint responds.
 state.models = [];
-populateModelDropdown(true);
+populateModelDropdown(true, state.backend === 'freellmapi' ? FREELLMAPI_CATALOG : MODEL_CATALOG);
 
 // Detect OS and reflect correct shortcut modifier in the input hint.
 (function(){

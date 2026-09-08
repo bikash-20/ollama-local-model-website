@@ -8,8 +8,11 @@
 > 4. Want to talk to it out loud instead of typing? See [Voice input and output](#voice-input-and-output-local) below.
 >
 > The full setup (LAN access, installing as an app, troubleshooting) is below — only read on if the lines above didn't work for you.
+
 <img width="1276" height="802" alt="image" src="https://github.com/user-attachments/assets/96cd8927-4235-48d5-be7a-910cd7a7221f" />
 
+>
+> **Don't want Node / npm?** You don't need it. Open `index.html` directly in a browser and you're done. The `package.json` at the repo root is **test infrastructure only** (Playwright smoke tests); the app code never imports from it, never references it, and runs fine without `node_modules` installed. See [Running the smoke tests](#running-the-smoke-tests) if you want to contribute.
 
 
 <img width="1276" height="802" alt="image" src="https://github.com/user-attachments/assets/5bfe68ce-d2d0-4018-90a9-1a7b24d8000d" />
@@ -22,6 +25,7 @@
 
 ## What's new
 
+-  **Backend selector — Ollama or FreeLLMAPI.** A new picker at the top of Preferences lets you switch between your local Ollama daemon (the default, unchanged) and a FreeLLMAPI OpenAI-compatible router. Switching backends is instant, your chat history carries over, and you can flip mid-conversation to route a specific turn through the other backend. Phase 1 ships the selector, settings plumbing, and an adapter layer; FreeLLMAPI chat streaming is a Phase 2 placeholder so the UI is fully testable without standing up the router. See [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi).
 -  **Independent text-color picker.** A second picker in Preferences → Text color lets you choose the body-text palette on its own, decoupled from the accent theme. Five presets ship — Default, Plum, Slate, Cream, Sage — each with its own dark and light variant. Mix and match freely (Ocean accent + Plum text, Rose accent + Slate text, etc.) and both choices are remembered. The accent theme picker is unchanged.
 -  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
@@ -32,10 +36,13 @@
 ---
 
 Nocta is a single self-contained HTML file that gives you a polished chat
-interface on top of a running [Ollama](https://ollama.com) daemon. There is
-no build step, no Node tooling, no backend to deploy. You open
-`index.html` in any modern browser and start talking to the model
-that is running on your machine — or on any other machine on your LAN.
+interface on top of a running [Ollama](https://ollama.com) daemon. **The app
+itself requires no build step and no Node tooling** — you open `index.html`
+in any modern browser and start talking to the model that is running on
+your machine — or on any other machine on your LAN. The `package.json` at
+the repo root exists only to run the test suite (see
+[Running the smoke tests](#running-the-smoke-tests)); it is not required
+to use Nocta.
 
 It is built with the quirks of local open-weight models in mind. Ragged
 tables get auto-repaired. Formulas that the model forgot to wrap in
@@ -60,6 +67,7 @@ USB stick.
 - [Install it as an app (PWA)](#install-it-as-an-app-pwa)
 - [The curated model catalog](#the-curated-model-catalog)
 - [Features](#features)
+- [Backends: Ollama and FreeLLMAPI](#backends-ollama-and-freellmapi)
 - [Preferences and settings](#preferences-and-settings)
 - [Voice input and output (local)](#voice-input-and-output-local)
 - [Math rendering (KaTeX)](#math-rendering-katex)
@@ -71,6 +79,7 @@ USB stick.
 - [Architecture notes](#architecture-notes)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
+- [Running the smoke tests](#running-the-smoke-tests)
 - [License](#license)
 - [Credits](#credits)
 
@@ -396,12 +405,13 @@ never heard of the family before.
 
 ### Core chat
 
-- Streaming responses — tokens appear the instant Ollama produces them
+- Streaming responses — tokens appear the instant the backend produces them
 - Multiple chats with a searchable sidebar
 - Edit and resend — click any user message to edit it and regenerate from there
 - Copy any message with one click
 - Regenerate the last assistant response against the same prompt
 - Stop a generation mid-stream without freezing the UI
+- Switch between Ollama and FreeLLMAPI mid-conversation (see [Backends](#backends-ollama-and-freellmapi))
 
 ### Voice (new)
 
@@ -445,6 +455,71 @@ never heard of the family before.
 
 ---
 
+## Backends: Ollama and FreeLLMAPI
+
+Nocta talks to one of two backends:
+
+- **Ollama (local)** — the default. Runs the model on your own machine
+  via [`ollama serve`](https://ollama.com). Streaming uses Ollama's
+  NDJSON `/api/chat` endpoint. Nothing leaves your network.
+- **FreeLLMAPI** — an OpenAI-compatible router that exposes
+  `/v1/chat/completions`, `/v1/models`, and friends. Useful when you
+  want to talk to a hosted model through the same chat UI without
+  changing your workflow.
+
+You pick which one is active in **Preferences → Backend**. The
+selection persists across reloads, applies to the next message you
+send, and you can flip mid-conversation — your chat history carries
+over to the new backend, so you can route a specific turn through
+the other service.
+
+### What works today (Phase 1)
+
+The Backend selector, settings plumbing (URL + API key fields), the
+adapter layer that lets each backend speak its native wire format, and
+the model-loader / dropdown logic are all live. **Ollama is fully
+functional — every chat feature behaves exactly as before.** FreeLLMAPI
+is in a Phase 1 stub:
+
+- The model dropdown is populated from the router's `/v1/models`
+  endpoint when reachable, falling back to a curated static catalog
+  (`gpt-5.4`, `gemini-3.1-flash-lite-thinking`,
+  `grok-4.1-fast-reasoning`) otherwise.
+- Sending a message routes through the FreeLLMAPI adapter and returns
+  a clear "Phase 2 placeholder" reply in the bubble instead of
+  streaming. This makes the entire UI testable end-to-end without
+  standing up the router.
+- "Test connection" stays as a real network probe for users who want
+  to verify connectivity; for FreeLLMAPI a failed probe no longer
+  reads as fatal, since the stub responds regardless.
+
+### What's coming next
+
+- **Phase 2 — real FreeLLMAPI streaming.** Replace the stub with real
+  SSE parsing against `/v1/chat/completions`, error mapping from the
+  router's status codes, and proper cancellation.
+- **Phase 3 — vision / PDF upload.** Attach images and PDFs to a
+  message; vision-capable models rasterize the input and pass it
+  through. Ollama's `/api/chat` already accepts multimodal payloads;
+  FreeLLMAPI's router contract is what we're matching.
+
+### Configuring FreeLLMAPI
+
+1. Make sure the FreeLLMAPI router is running and listening on a
+   local port (e.g. `localhost:3001`).
+2. Open Nocta **Preferences → Backend** and pick **FreeLLMAPI**.
+3. Fill in the **FreeLLMAPI base URL** (default
+   `http://localhost:3001/v1`) and **API key** (sent as
+   `Authorization: Bearer <key>`).
+4. Click **Save**. The model dropdown re-populates from the router.
+
+> **Heads-up — mixed content.** If you open Nocta from a hosted
+> `https://` page, your browser blocks `http://localhost:...` requests
+> to the router (mixed-content policy). Open `index.html` from disk,
+> or serve both Nocta and the router over HTTPS.
+
+---
+
 ## Preferences and settings
 
 The **gear icon** lives in the **sidebar footer** — the pinned row of
@@ -464,7 +539,10 @@ modal. There are four core settings, plus two for voice:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Server URL | Where to find Ollama. Use `http://host:port`. | `http://localhost:11434` |
+| Backend | Pick **Ollama (local)** or **FreeLLMAPI**. Each backend shows its own URL/key fields below the picker. Switching is instant and applies to the next message. | Ollama (local) |
+| Server URL | Where to find Ollama. Used when Backend = Ollama. Use `http://host:port`. | `http://localhost:11434` |
+| FreeLLMAPI base URL | Where to find the FreeLLMAPI router. Used when Backend = FreeLLMAPI. OpenAI-compatible `/v1/...` paths. | `http://localhost:3001/v1` |
+| FreeLLMAPI API key | Bearer token for the FreeLLMAPI router. Stored only in this browser's `localStorage`. | _(empty)_ |
 | System prompt | Sent as a `system` message ahead of every request in all chats. Edits apply to future turns immediately. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
 | Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, or Rose. Pick a swatch and the app recolors instantly. | Aurora |
@@ -472,8 +550,8 @@ modal. There are four core settings, plus two for voice:
 | Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |
 | Voice (TTS) endpoint | Where your local text-to-speech server lives. Leave blank to hide the speaker icon. | _(empty)_ |
 
-Click **Test connection** inside Preferences to ping Ollama before
-saving.
+Click **Test connection** inside Preferences to ping the active
+backend's endpoint before saving.
 
 > **Reminder:** Preferences are stored per browser origin. If you use
 > both the hosted `https://` link and a local `file://` copy, you'll
@@ -959,10 +1037,14 @@ exactly as it did before voice existed.
 
 ## Roadmap
 
+- **Phase 2 — real FreeLLMAPI streaming** (SSE parsing against
+  `/v1/chat/completions`, error mapping, proper cancellation). Phase 1
+  ships the selector + adapter skeleton with a stub reply.
+- **Phase 3 — vision / PDF upload.** Image and PDF attachments;
+  vision-capable models rasterize the input and pass it through.
 - Per-model parameter overrides (`top_p`, `top_k`, `repeat_penalty`)
 - Streaming cancel that visibly un-disables the input
 - Pin a specific message and branch the chat from it
-- Image and vision model support (Ollama `/api/chat` multimodal)
 - Additional Piper voices selectable from Preferences, not just one
   fixed default
 - Optional backend proxy to bypass CORS and the HTTPS/localhost
@@ -974,11 +1056,40 @@ exactly as it did before voice existed.
 
 Issues and PRs are welcome. The bar to merge a PR is just:
 
-1. The code still fits in one file (or, if you are splitting it up, has
-   a reason and a one-line explanation in the PR body).
-2. The README is updated for any user-visible change.
-3. Keep the zero-build promise — don't add a `package.json` unless we
-   are really ready to commit to that.
+1. **`index.html` itself must remain zero-build.** You can open it in a
+   browser with no install step and no `node_modules` directory and it
+   has to work. Never add a `<script type="module">` that resolves
+   through `node_modules/`, never add a bundler config, never ship a
+   build command.
+2. **The `package.json` is test infrastructure, not app code.** It
+   exists only to run Playwright smoke tests under `tests/`. Any future
+   Node-side tooling added to the repo must follow the same rule: it's
+   opt-in for contributors, invisible to users. Adding a runtime
+   dependency on Node would be a breaking change.
+3. The code still fits in one file (or, if you are splitting it up,
+   has a reason and a one-line explanation in the PR body).
+4. The README is updated for any user-visible change.
+
+### Running the smoke tests
+
+> **Dev-only.** The smoke tests exist for contributors and CI. **You do
+> not need Node, npm, or Playwright to use Nocta.** The `package.json`,
+> `playwright.config.mjs`, and `tests/` directory are *test infrastructure*
+> — they are never loaded by `index.html`, never referenced by the app
+> code, and can be deleted without affecting the running app. Skip this
+> section if you only want to use Nocta.
+
+```bash
+npm install                  # one-time
+npx playwright install chromium  # one-time, ~150MB browser download
+npm test                     # run the suite
+```
+
+The tests boot `index.html` in headless Chromium, stub `/api/tags` and
+`/api/chat`, and verify the page boots without console errors, the
+persistent offline banner appears when Ollama is down, chat history
+survives a hard reload, and (Phase 1) the Preferences modal exposes
+the Backend selector with Ollama selected by default.
 
 ---
 
