@@ -2712,12 +2712,19 @@ function setOnline(isOnline, stateName){
   const name = stateName || (isOnline ? 'ok' : 'offline');
   el.statusDot.classList.remove('online','offline','checking','local');
   el.statusDot.classList.add(name);
-  const label = {
-    ok: 'connected',
-    checking: 'checking…',
+  // Status text adapts to the active backend. "connected" makes sense
+  // for Ollama (the local daemon is up); for FreeLLMAPI we say "router
+  // ready" so it's clear what was checked. The fallback path uses
+  // "checking" with a yellow dot — friendlier than the previous red
+  // "error" which implied the whole app was broken when only the
+  // cloud router was unreachable.
+  const isCloud = state.backend === 'freellmapi';
+  const label = ({
+    ok: isCloud ? 'router ready' : 'connected',
+    checking: 'router unreachable',
     local: 'local mode',
     offline: 'error'
-  }[name] || 'offline';
+  })[name] || 'offline';
   el.statusText.textContent = label;
 }
 
@@ -2840,6 +2847,10 @@ async function loadFreellmapiModels(silent){
       .filter(m => m && m.name);
     if(state.models.length === 0){
       state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
+      // Same logic as the catch below: don't paint the dot red for a
+      // cloud-backend failure. Yellow-checking tells the user the
+      // router was reachable but had no chat models to offer.
+      setOnline(false, 'checking');
       showToast('FreeLLMAPI returned no models — using static catalog.');
       populateModelDropdown(false, FREELLMAPI_CATALOG);
       return;
@@ -2847,13 +2858,26 @@ async function loadFreellmapiModels(silent){
     populateModelDropdown(false, FREELLMAPI_CATALOG);
   }catch(err){
     if(err && err.name === 'AbortError'){
-      // Slow router — keep previous list, no UI flap.
-      setOnline(true, 'ok');
+      // Slow router — keep previous list, no UI flap. Don't paint
+      // "connected" green though, that would be misleading: the
+      // request timed out, so the router is currently unreachable.
+      // Use the same amber-checking state as a real network error.
+      state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
+      populateModelDropdown(false, FREELLMAPI_CATALOG);
+      setOnline(false, 'checking');
+      showToast('FreeLLMAPI: timed out — using static catalog.');
       return;
     }
     state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
     populateModelDropdown(false, FREELLMAPI_CATALOG);
-    setOnline(false, 'offline');
+    // Don't flip the status dot to red "error" — for the FreeLLMAPI
+    // backend that same red used to signal "Ollama is down, nothing
+    // works". For cloud it just means the router's currently
+    // unreachable; the Phase 1 stub still answers, so keep the dot
+    // in a neutral/checked state (yellow-ish checking colour) and let
+    // the toast carry the diagnostic. The dot still flips red only
+    // when the *Ollama* backend is the one that's offline.
+    setOnline(false, 'checking');
     showToast('FreeLLMAPI: ' + (err.message || 'router unreachable') + ' — using static catalog.');
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
