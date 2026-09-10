@@ -29,7 +29,9 @@
 -  **Independent text-color picker.** A second picker in Preferences → Text color lets you choose the body-text palette on its own, decoupled from the accent theme. Five presets ship — Default, Plum, Slate, Cream, Sage — each with its own dark and light variant. Mix and match freely (Ocean accent + Plum text, Rose accent + Slate text, etc.) and both choices are remembered. The accent theme picker is unchanged.
 -  **Math & table repair fixes.** Three real bugs caught and fixed in the LaTeX preprocessor: tight single-line brackets like `[\sqrt{2}]` no longer wrap the entire line in `$...$` (only the bracket contents get wrapped); SmolLM-style `\[…\]` display math now produces padded `$$ … $$` blocks so KaTeX renders them as true display equations with a line break; and indented bare-math lines (continuation blocks, nested items) keep their leading whitespace instead of being un-indented by the wrap pass. Six new regression tests added to `test_math.mjs` — `node test_math.mjs` now runs 21 cases.
 -  **SmolLM3-3B compatibility.** Nocta now correctly renders math, code, and tables from SmolLM models (like `hf.co/unsloth/SmolLM3-3B-GGUF`) that emit `\(…\)` / `\[…\]` LaTeX delimiters instead of `$` / `$$`. The preprocessor converts these to dollar-sign delimiters before the markdown parser strips the backslashes, so KaTeX picks them up and renders as expected.
--  **Color themes.** Pick from six WhatsApp/Messenger-style accent themes — Aurora, Ocean, Mint, Sunset, Lavender, and Rose — in **Preferences → Color theme**. The whole UI recolors live, in both dark and light mode, and your choice is remembered. See [Preferences and settings](#preferences-and-settings).
+-  **Mauve theme.** A new daytime accent theme — **Deep Mauve** (`#674D66`) as the dominant color with **Soft Pink Blush** (`#EBD6DC`) as the page background. Calm, sophisticated, and feminine — perfect for long reading sessions. Light-only (the dark-mode accent picker is unchanged). Available in **Preferences → Color theme**.
+-  **Pastel theme.** A new daytime accent theme with a deepened warm palette — terracotta-cream background, blush/rose surface tones, honey-amber focus color, and deeper charcoal text for strong contrast on the warmer surface. Light-only. Available in **Preferences → Color theme**.
+-  **Color themes.** Pick from eight WhatsApp/Messenger-style accent themes — Aurora, Ocean, Mint, Sunset, Lavender, Rose, Pastel, and Mauve — in **Preferences → Color theme**. The whole UI recolors live, in both dark and light mode, and your choice is remembered. See [Preferences and settings](#preferences-and-settings).
 -  **Local voice input and output.** Talk to your model and have it talk back — speech-to-text via faster-whisper, text-to-speech via Piper, both running entirely on your own machine. See [Voice input and output](#voice-input-and-output-local).
 -  **PWA install confirmed working on macOS** (Safari → File → Add to Dock) as well as Chrome/Edge/Brave on desktop, Android, and iOS. Nocta now runs as a real standalone app with its own icon and window — not just a browser tab.
 
@@ -424,7 +426,7 @@ never heard of the family before.
 ### UI and theming
 
 - Dark and light mode toggle (persisted)
-- Six color themes — Aurora, Ocean, Mint, Sunset, Lavender, Rose — with a WhatsApp/Messenger-style swatch picker in Preferences (persisted, live-switchable, in both dark and light mode)
+- Eight color themes — Aurora, Ocean, Mint, Sunset, Lavender, Rose, Pastel, Mauve — with a WhatsApp/Messenger-style swatch picker in Preferences (persisted, live-switchable, in both dark and light mode; Pastel and Mauve are light-only)
 - Mobile-friendly layout with collapsible sidebar and overlay
 - Collapsible sidebar — keep only the chat on screen when you need room
 - Boot loader skeleton — the page paints fast, hydration happens after
@@ -607,7 +609,7 @@ modal. There are four core settings, plus two for voice:
 | Server URL | Where to find Ollama. Use `http://host:port` for a local or LAN daemon. | `http://localhost:11434` |
 | System prompt | Sent as a `system` message ahead of every request in all chats. Edits apply to future turns immediately. | _(empty)_ |
 | Temperature | Sampling temperature, `0.0` (deterministic) to `2.0` (chaos). | `0.7` |
-| Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, or Rose. Pick a swatch and the app recolors instantly. | Aurora |
+| Color theme | Accent theme for the whole UI — Aurora, Ocean, Mint, Sunset, Lavender, Rose, Pastel, or Mauve. Pick a swatch and the app recolors instantly. (Pastel and Mauve are light-only.) | Aurora |
 | Text color | Body-text palette — Default, Plum, Slate, Cream, or Sage. Independent of the accent theme, so you can mix and match (Ocean accent + Plum text, etc.). Recolors all three text slots at once, in both dark and light mode. | Default |
 | Voice (STT) endpoint | Where your local speech-to-text server lives. Leave blank to hide the mic icon. | _(empty)_ |
 | Voice (TTS) endpoint | Where your local text-to-speech server lives. Leave blank to hide the speaker icon. | _(empty)_ |

@@ -136,6 +136,67 @@
     --accent:#be185d;
     --user-tint:rgba(190,24,93,0.12); --user-border:rgba(190,24,93,0.40);
   }
+  /* Pastel — soft warm palette: warm beige bg, blush/rose accents, amber focus,
+     charcoal text. Light-only: the palette is inherently cream-toned, so we
+     only override the light variant. When the user is in dark mode and picks
+     Pastel, the existing :root dark tokens remain in effect — there is no
+     pastel-dark variant on purpose.
+
+     Depth notes: bg uses a richer terracotta-cream (not pale ivory) so cards
+     have visual presence against it; text is deepened for stronger contrast
+     on the warmer surface; amber accents are pulled toward honey/terracotta
+     for saturation; blush and rose blobs are intensified enough to glow
+     softly without becoming harsh. */
+  [data-theme="light"][data-accent="pastel"]{
+    --bg-0:#E8D9C2;
+    --bg-1:#F4E6D0;
+    --bg-2:#DCC5A8;
+    --glass:rgba(232,217,194,0.72);
+    --glass-border:rgba(58,42,30,0.16);
+    --glass-strong:rgba(244,230,208,0.92);
+    --glass-hover:rgba(201,140,140,0.22);
+    --text-hi:#2A1F18;
+    --text-mid:#5A4534;
+    --text-low:#7A6450;
+    --user-tint:rgba(217,142,148,0.32);
+    --user-border:rgba(190,110,118,0.60);
+    --danger:#A84A4A;
+    --ok:#6E9472;
+    --warn:#B87820;
+    --accent:#B87820;
+    --aurora-a:#E89497;
+    --aurora-b:#C97070;
+    --aurora-c:#E8C570;
+    --aurora-d:#9F82B5;
+  }
+  /* Mauve — Soft Pink Blush (#EBD6DC) page bg with Deep Mauve (#674D66) as
+     the dominant accent. Light-only: the palette is intentionally calm and
+     feminine for daytime use. Text is a deep aubergine so it reads strongly
+     on the blush surface without being harsh. The ambient blobs lean into
+     the mauve spectrum (deeper mauve + blush + dusty rose + lavender) so
+     the glow stays cohesive. */
+  [data-theme="light"][data-accent="mauve"]{
+    --bg-0:#EBD6DC;
+    --bg-1:#F5E6E9;
+    --bg-2:#D9BEC4;
+    --glass:rgba(235,214,220,0.72);
+    --glass-border:rgba(58,30,52,0.16);
+    --glass-strong:rgba(245,230,233,0.92);
+    --glass-hover:rgba(103,77,102,0.18);
+    --text-hi:#2E1F2C;
+    --text-mid:#5A3F58;
+    --text-low:#7A5C70;
+    --user-tint:rgba(103,77,102,0.18);
+    --user-border:rgba(103,77,102,0.50);
+    --danger:#A8455A;
+    --ok:#6E8C7A;
+    --warn:#A87A3A;
+    --accent:#674D66;
+    --aurora-a:#674D66;
+    --aurora-b:#EBD6DC;
+    --aurora-c:#B58A98;
+    --aurora-d:#9F82B5;
+  }
   /* Text-color palettes — independent of the accent theme above. Each preset
      overrides all three text tokens at once (hi/mid/low). The default preset
      is the existing dark/light cascade, so leaving data-text unset == Default.
@@ -1283,6 +1344,69 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   }
   .sidebar-backdrop.show{opacity:1;pointer-events:auto;}
 
+  /* iOS / Android safe-area handling — only effective when viewport-fit=cover
+     is set (it is, in <head>). On devices with a notch, Dynamic Island, or
+     home indicator, env(safe-area-inset-*) reports the safe drawing region.
+     We use max() so the values don't shrink below the existing design
+     paddings on devices that don't need the inset (most laptops / desktops). */
+  .header{padding-top:max(12px, env(safe-area-inset-top));}
+  .inputbar{
+    padding-bottom:max(16px, calc(env(safe-area-inset-bottom) + 8px));
+    padding-left:max(18px, env(safe-area-inset-left));
+    padding-right:max(18px, env(safe-area-inset-right));
+  }
+  .sidebar{padding-top:env(safe-area-inset-top);}
+  .boot-loader{padding-top:env(safe-area-inset-top);}
+
+  /* Tablet portrait & small laptop landscape (768–959.98px): persistent
+     sidebar with a tighter width. Below 768px the drawer takes over via
+     the existing 960/600 rules above (max-width selectors). Note: we don't
+     force margin-left:0 here so the existing body.sidebar-collapsed desktop
+     collapse behavior still works on tablets. */
+  @media (min-width:768px) and (max-width:959.98px){
+    :root{--sidebar-w:220px;}
+    .sidebar{
+      position:relative !important;
+      transform:none !important;
+      box-shadow:none !important;
+    }
+    .sidebar-close{display:none;}
+    .menu-btn{display:none;}
+    .sidebar-collapse{display:flex;}
+    .brand-text p{display:block;}
+  }
+
+  /* Landscape phones & very short windows: compact everything vertically
+     so the chat still feels like a chat and not a packed list. Triggered
+     only when the window is <500px tall AND the drawer behavior is active
+     (i.e. width < 960px). */
+  @media (max-width:959.98px) and (orientation:landscape) and (max-height:500px){
+    .header{padding:8px 12px;gap:6px;}
+    .messages{padding:10px 14px 8px;gap:10px;}
+    .brand-text p{display:none;}
+    .empty-state h2{font-size:20px;margin-bottom:4px;}
+    .empty-state .mark{width:40px;height:40px;margin-bottom:8px;}
+    .inputbar{padding:8px 12px;}
+    .field{padding:4px 4px 4px 10px;border-radius:16px;}
+  }
+
+  /* iOS Safari rubber-band / Android pull-to-refresh inside the chat
+     shouldn't trigger a page reload. We scope overscroll-behavior to
+     scrollable regions; the page itself stays scrollable so the user
+     can still pull-to-refresh from the very top of the document if
+     they really want to. */
+  .messages,.chat-list,.model-popup-list{overscroll-behavior:contain;}
+
+  /* Touch-primary devices get slightly larger hit targets so taps land
+     reliably. pointer:coarse matches phones, tablets, and kiosk displays
+     without affecting stylus or mouse users. */
+  @media (pointer:coarse){
+    .msg-action{width:30px;height:30px;}
+    .icon-btn{width:34px;height:34px;}
+    .new-chat-btn{padding:11px 12px;}
+    .settings-row{padding:10px 12px;}
+  }
+
   /* Tablet & below: sidebar turns into a slide-over drawer. */
   @media (max-width:960px){
     .sidebar{
@@ -2047,6 +2171,8 @@ const THEMES = [
   { id: 'sunset',   name: 'Sunset',   css: 'linear-gradient(135deg,#f97316,#f43f5e)' },
   { id: 'lavender', name: 'Lavender', css: 'linear-gradient(135deg,#8b5cf6,#c084fc)' },
   { id: 'rose',     name: 'Rose',     css: 'linear-gradient(135deg,#ec4899,#f472b6)' },
+  { id: 'pastel',   name: 'Pastel',   css: 'linear-gradient(135deg,#E89497,#E8C570)' },
+  { id: 'mauve',    name: 'Mauve',    css: 'linear-gradient(135deg,#674D66,#EBD6DC)' },
 ];
 
 function paintThemeSwatches(){
@@ -3921,7 +4047,7 @@ function toggleSidebar(){
     else closeSidebar();
   }
 }
-function isMobile(){ return window.matchMedia('(max-width:960px)').matches; }
+function isMobile(){ return window.matchMedia('(max-width:767.98px)').matches; }
 
 function exportChat(){
   const chat = getActiveChat();
