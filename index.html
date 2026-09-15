@@ -1729,6 +1729,7 @@ body.ready{opacity:1;transition:opacity .25s ease;}
       <label class="pref-label">
         <span>System prompt <em>(optional)</em></span>
         <textarea id="prefsSystem" rows="3" placeholder="You are a helpful assistant that replies concisely."></textarea>
+        <small class="pref-hint">A LaTeX math-formatting reminder is automatically appended so equations render with KaTeX — you don't need to write it yourself.</small>
       </label>
 
       <label class="pref-label">
@@ -2084,6 +2085,29 @@ const el = {
 
 let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
 let settings = { systemPrompt: '', temperature: null, sttUrl: '', ttsUrl: '', speakerOn: false };
+
+// Math-formatting instruction. Many local models (DeepSeek-Coder, Qwen-*
+// base, etc.) default to writing equations as plain markdown text —
+// `I_C = beta * I_B` instead of `$I_C = \beta I_B$` — because they were
+// trained on code and prose, not academic math. That breaks KaTeX's
+// auto-render. We always inject this instruction so the model formats any
+// math it produces in LaTeX. If the user has set a custom system prompt,
+// we APPEND this to it; if the system prompt is empty, this is the only
+// system message. Either way the model hears it on every turn.
+const MATH_INSTRUCTION = [
+  'When you write a mathematical expression, formula, or equation, ALWAYS',
+  'wrap it in LaTeX delimiters so KaTeX can render it:',
+  '  - Inline math: wrap in single dollar signs, e.g. $x^2 + 1$',
+  '  - Display math (standalone equations): wrap in double dollar signs on their own lines:',
+  '    $$',
+  '    \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}',
+  '    $$',
+  'Use real LaTeX commands (\\frac, \\sqrt, \\beta, \\sum, \\int, \\to, \\le, \\ge, etc.)',
+  'instead of textual approximations. Subscripts use an underscore: I_C or I_{C}.',
+  'Superscripts use a caret: x^2 or e^{-x}. Greek letters and operators should',
+  'always be LaTeX commands, never spelled out. Do this for EVERY equation,',
+  'even short ones inline in a sentence.'
+].join('\n');
 let pendingImage = null;
 let isStreaming = false;
 let abortController = null;
@@ -4051,8 +4075,16 @@ async function sendMessage(text, opts){
   // whereas a role:'system' message is honored by every template — so deliver
   // the prompt the template-native way. Applied per request, which means edits
   // to the prompt apply to future turns of every chat.
+  //
+  // We always inject MATH_INSTRUCTION so the model formats math in LaTeX.
+  // If the user has a custom system prompt we append MATH_INSTRUCTION to the
+  // end of it (so the math reminder comes after the persona, where it's still
+  // seen). If the system prompt is empty, MATH_INSTRUCTION alone is used.
   let apiHistory = buildApiHistory(chat.messages);
-  if(settings.systemPrompt) apiHistory.unshift({ role: 'system', content: settings.systemPrompt });
+  let sysMsg = settings.systemPrompt
+    ? settings.systemPrompt.trimEnd() + '\n\n' + MATH_INSTRUCTION
+    : MATH_INSTRUCTION;
+  apiHistory.unshift({ role: 'system', content: sysMsg });
 
   const bubble = addRow('assistant', '', true, null, nowTime(), false);
   let fullReply = '';
