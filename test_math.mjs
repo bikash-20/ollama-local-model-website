@@ -63,6 +63,21 @@ vm.runInContext(target + (pmSource ? '\n' + pmSource : ''), ctx);
 
 // Pull out the helpers.
 const {wrapBareLatex, preprocessMarkdown} = ctx;
+// Also pull the stash arrays so tests can verify math placeholders.
+// The vm sandbox exposes them as globals only if they're declared with
+// `var`; `let` declarations stay lexical to the script and we have to
+// fish them out by running a getter function in the same context.
+vm.runInContext(`
+  globalThis.__getMathStash = () => _mathStash;
+  globalThis.__getCodeStash = () => _codeStash;
+`, ctx);
+const _mathStashRef = ctx.__getMathStash;
+const _codeStashRef = ctx.__getCodeStash;
+function stashByIndex(getter) {
+  // Snapshot the current stash contents. We slice so tests see a stable
+  // view even if subsequent calls to wrapBareLatex reset the stash.
+  return getter().slice();
+}
 
 const cases = [
   {
@@ -84,9 +99,19 @@ const cases = [
 
 3. Third Quartile (Q3):`,
     expect: (out) => {
-      // The two [ ... ] blocks should now be $$ ... $$.
-      const blockCount = (out.match(/\$\$[\s\S]*?\$\$/g) || []).length;
-      if(blockCount < 2) throw new Error(`expected >=2 $$...$$ blocks, got ${blockCount}\n--- output ---\n${out}`);
+      // The two [ ... ] blocks become multi-line $$ ... $$ display blocks,
+      // which are now STASHED (not inlined) so marked can't inject <br>
+      // between the delimiter lines. Inline $$ markers should NOT appear
+      // in the returned text; the stash should contain both blocks.
+      const stash = stashByIndex(_mathStashRef);
+      const blockCount = stash.filter(v => /^\$\$/.test(v)).length;
+      if(blockCount < 2) throw new Error(`expected >=2 $$...$$ blocks in math stash, got ${blockCount}: ${JSON.stringify(stash)}\n--- output ---\n${out}`);
+      // Output text has no inline $$ markers (only placeholders).
+      const inlineBlockCount = (out.match(/\$\$[\s\S]*?\$\$/g) || []).length;
+      if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$...$$ blocks (should be stashed), got ${inlineBlockCount}\n${out}`);
+      // Two placeholders should be present.
+      const placeholderCount = (out.match(/\x00MATHSTASH\d+\x00/g) || []).length;
+      if(placeholderCount < 2) throw new Error(`expected >=2 placeholders, got ${placeholderCount}\n${out}`);
     }
   },
   {
@@ -134,12 +159,18 @@ const cases = [
 Q_1 = \\frac{(n+1)}{4}^{\\text{th}} \\text{ term}
 ]`,
     expect: (out) => {
-      // Should be a single $$ ... $$. Must not contain nested $...$ inside.
+      // The $$ ... $$ block is stashed (not inlined) so marked with
+      // breaks:true can't inject <br> tags between the delimiter lines.
+      // Verify: no $$ markers in the returned text (they're stashed),
+      // and the stash contains the block as a single $$ ... $$ unit.
       const openCount = (out.match(/\$\$/g) || []).length;
-      if(openCount !== 2) throw new Error(`expected 2 $$ markers, got ${openCount}\n${out}`);
-      // No naked $...$ in the middle.
-      const inlineCount = (out.match(/(?<!\\)\$/g) || []).length;
-      if(inlineCount !== 4) throw new Error(`expected 4 dollars ($$ pair only), got ${inlineCount}\n${out}`);
+      if(openCount !== 0) throw new Error(`expected 0 $$ markers inlined (should be stashed), got ${openCount}\n${out}`);
+      const stash = stashByIndex(_mathStashRef);
+      const block = stash.find(v => /^\$\$/.test(v));
+      if(!block) throw new Error(`expected a $$ ... $$ block in math stash, got: ${JSON.stringify(stash)}\n--- out ---\n${out}`);
+      if((block.match(/\$\$/g) || []).length !== 2) throw new Error(`stash block should have exactly 2 $$ markers, got ${block}`);
+      // The placeholder should appear in the output text once.
+      if(!/\x00MATHSTASH0\x00/.test(out)) throw new Error(`expected placeholder \\x00MATHSTASH0\\x00 in output, got:\n${out}`);
     }
   },
   {
@@ -163,9 +194,14 @@ solved by elimination`,
     name: 'idempotent — wrapping an already-wrapped input does not double-wrap',
     input: `The roots are $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ and discriminant $b^2 - 4ac$.`,
     expect: (out) => {
-      // Should still contain exactly the same delimiters, not nested.
+      // Inline $...$ math is NOT stashed (only multi-line $$...$$ is,
+      // because that's what breaks under marked breaks:true). The inline
+      // delimiters must survive marked's parse intact — no nesting, no
+      // double-wrapping, exactly 4 dollar signs (2 pairs).
+      const stash = stashByIndex(_mathStashRef);
+      if(stash.length !== 0) throw new Error(`expected 0 multi-line math stashes (only inline here), got ${stash.length}: ${JSON.stringify(stash)}`);
       const dollarCount = (out.match(/(?<![\\$])\$/g) || []).length;
-      if(dollarCount !== 4) throw new Error(`expected 4 dollar signs (2 pairs), got ${dollarCount}\n${out}`);
+      if (dollarCount !== 4) throw new Error(`expected 4 dollar signs (2 inline pairs), got ${dollarCount}\n${out}`);
     }
   },
   {
@@ -239,18 +275,30 @@ solved by elimination`,
     input: `Then we have\n\\[\\frac{a}{b}\\]\nthe next paragraph.`,
     expect: (out) => {
       // Bug: Pass 0b used to emit '$$\\frac{a}{b}$$' with no padding,
-      // so KaTeX rendered it as inline-style display. Now padded with \n.
-      if(!/\$\$\n\\frac\{a\}\{b\}\n\$\$/.test(out)) {
-        throw new Error(`expected padded $$ ... $$, got:\n${out}`);
+      // so KaTeX rendered it as inline-style display. Now padded with \n
+      // AND stashed so marked can't insert <br> tags between the delimiters.
+      const stash = stashByIndex(_mathStashRef);
+      const block = stash.find(v => v.includes('\\frac{a}{b}'));
+      if(!block) throw new Error(`expected \\frac{a}{b} in math stash, got: ${JSON.stringify(stash)}`);
+      if(!/\$\$\n\\frac\{a\}\{b\}\n\$\$/.test(block)) {
+        throw new Error(`expected padded $$ ... $$ in stash, got: ${block}`);
       }
+      // Output text has the placeholder (no $$ inline).
+      if((out.match(/\$\$/g) || []).length !== 0) throw new Error(`expected 0 inline $$ (stashed), got:\n${out}`);
+      if(!/\x00MATHSTASH0\x00/.test(out)) throw new Error(`expected placeholder in output:\n${out}`);
     }
   },
   {
     name: 'SmolLM-style \\( ... \\) inline still uses $...$',
     input: `Inline \\(x^2 + 1\\) math here.`,
     expect: (out) => {
-      if(!out.includes('$x^2 + 1$')) throw new Error(`inline \(...\) not converted: ${out}`);
-      if(out.includes('\\(')) throw new Error(`\\( ... \\) delimiter survived: ${out}`);
+      // \(...\) converts to $...$ inline (not stashed — only multi-line
+      // $$...$$ blocks need stashing to survive marked breaks:true).
+      // Stash should be empty; output should contain "$x^2 + 1$" inline.
+      const stash = stashByIndex(_mathStashRef);
+      if(stash.length !== 0) throw new Error(`expected 0 multi-line stashes, got ${stash.length}: ${JSON.stringify(stash)}`);
+      if(!out.includes('$x^2 + 1$')) throw new Error(`inline $...$ not present in output: ${out}`);
+      if(out.includes('\\(')) throw new Error(`\\( ... \\) delimiter survived in output: ${out}`);
     }
   },
   {
@@ -285,6 +333,47 @@ solved by elimination`,
       if(!/^\| 1 \| 2 \| 3 \|$/.test(lines[2])) {
         throw new Error(`expected row with missing leading pipe to be normalised, got: "${lines[2]}"\n${out}`);
       }
+    }
+  },
+  // ---- Regression test for the BJT/JFET bug (user-reported) ----
+  // The model emitted multi-line `$$ ... $$` blocks containing subscripts
+  // (`I_C`, `I_{DSS}`, `V_{GS}`). marked with `breaks: true` was injecting
+  // `<br>` between the delimiter lines, producing `<p>$$<br>...<br>$$</p>`
+  // — KaTeX then either silently failed to render or rendered each token
+  // on its own line, breaking subscripts visually. The fix: stash multi-
+  // line `$$ ... $$` blocks so marked can't touch them, restore as raw
+  // HTML in renderFinalMarkdown before KaTeX runs.
+  {
+    name: 'BJT/FET multi-line display math is stashed intact (no marked interference)',
+    input: `Here:
+
+$$
+I_C = \\beta I_B
+$$
+
+Here:
+
+$$
+I_D = I_{DSS} \\left(1 - \\frac{V_{GS}}{V_P}\\right)^2
+$$`,
+    expect: (out) => {
+      const stash = stashByIndex(_mathStashRef);
+      // Both display blocks must be stashed, with their delimiter lines
+      // preserved (no `<br>` injection — that's marked's job, but the
+      // placeholders never reach marked).
+      if(stash.length !== 2) throw new Error(`expected 2 stashed blocks, got ${stash.length}: ${JSON.stringify(stash)}`);
+      const bjt = stash[0];
+      if(!/^\$\$\nI_C = \\beta I_B\n\$\$$/.test(bjt)) throw new Error(`BJT block should be padded $$ ... $$, got: ${JSON.stringify(bjt)}`);
+      const fet = stash[1];
+      if(!/^\$\$\nI_D = I_\{DSS\}/.test(fet)) throw new Error(`FET block should start with $$ then I_D = I_{DSS}, got: ${JSON.stringify(fet)}`);
+      // Output text must contain NO inline `$$` markers (everything stashed).
+      const inlineBlockCount = (out.match(/\$\$/g) || []).length;
+      if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$ markers (stashed), got ${inlineBlockCount}\n${out}`);
+      // Both placeholders should appear in the output text.
+      const placeholderCount = (out.match(/\x00MATHSTASH\d+\x00/g) || []).length;
+      if(placeholderCount !== 2) throw new Error(`expected 2 placeholders, got ${placeholderCount}\n${out}`);
+      // The surrounding prose ("Here:") should survive intact.
+      if(!out.includes('Here:')) throw new Error(`prose around math was lost:\n${out}`);
     }
   }
 ];

@@ -998,6 +998,9 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   [data-theme="light"] .code-block .hljs-link{color:#8250df;}
 
   .katex{font-size:1.04em;}
+  /* Display-math span stashed by wrapBareLatex to survive marked breaks:true.
+     Block layout so the equation sits on its own line, with breathing room. */
+  .math-display{display:block;margin:.7em 0;overflow-x:auto;overflow-y:hidden;text-align:center;}
 
   .cursor-blink-inline{display:inline-block;width:7px;height:14px;background:var(--aurora-a);margin-left:2px;vertical-align:text-bottom;animation:blink 0.9s steps(1) infinite;border-radius:1.5px;}
   @keyframes blink{50%{opacity:0;}}
@@ -2339,6 +2342,10 @@ function formatRelativeTime(ts){
 }
 
 function switchChat(id){
+  // Same hazard as createChat: switching chats while streaming tears down
+  // the visible assistant bubble, hides the in-flight reply, and lands it
+  // in the abandoned chat when it finishes.
+  guardedStopWithToast('Stopped current reply — switching chats');
   state.activeId = id;
   saveState();
   renderChatList();
@@ -2346,6 +2353,11 @@ function switchChat(id){
 }
 
 function createChat(){
+  // Starting a fresh chat while streaming would wipe the assistant bubble
+  // out of the DOM, orphaning the chunks that are still in flight — they'd
+  // render into a detached node the user can't see, and the persisted
+  // reply would land in the discarded chat.
+  guardedStopWithToast('Stopped current reply — starting a new chat');
   const chat = { id: uid(), title: 'new chat', messages: [], createdAt: Date.now(), updatedAt: Date.now() };
   state.chats.push(chat);
   state.activeId = chat.id;
@@ -2357,6 +2369,10 @@ function createChat(){
 }
 
 function deleteChat(id){
+  // If the active chat is mid-stream when its row gets deleted, abort
+  // first so finaliseReply() doesn't try to push a reply into a chat
+  // that's no longer in state.chats.
+  if(isStreaming && state.activeId === id) stopStreaming();
   state.chats = state.chats.filter(c => c.id !== id);
   if(state.activeId === id){
     state.activeId = state.chats.length ? state.chats[state.chats.length-1].id : null;
@@ -2364,6 +2380,16 @@ function deleteChat(id){
   saveState();
   renderChatList();
   renderMessages();
+}
+
+// Shared guard for actions that would tear down a streaming bubble. Stops
+// the in-flight fetch (which persists whatever partial reply we already
+// have) and shows a toast so the user understands why their action is
+// happening. Safe to call when nothing is streaming — it's a no-op.
+function guardedStopWithToast(msg){
+  if(!isStreaming) return;
+  stopStreaming();
+  showToast(msg);
 }
 
 function renderMessages(){
@@ -2541,17 +2567,31 @@ const HAS_ENGLISH_WORD = /\b(?:the|of|and|are|was|were|to|when|then|for|with|fro
 // restore them at the end. The marker uses NULL bytes which can never appear
 // in a real chat message (unless the user pastes literal NULs — in which
 // case they have bigger problems).
+//
+// `stash` holds CODE blocks (restored in Pass 6) and MATH blocks (deferred
+// to renderFinalMarkdown). We split them so the math placeholders survive
+// marked.parse untouched — critical because marked with `breaks: true`
+// injects `<br>` inside multi-line `$$ ... $$` blocks, which KaTeX's
+// auto-render either ignores (no rendering) or renders with artifacts
+// (every token on its own line, breaking subscripts like `I_C`).
 function mathStashKey(i){ return '\x00MATHSTASH' + i + '\x00'; }
+function codeStashKey(i){ return '\x00CODESTASH' + i + '\x00'; }
+
+// Last-call stash arrays. wrapBareLatex rewrites these; renderFinalMarkdown
+// reads them to restore math blocks after marked has done its damage.
+let _codeStash = [];
+let _mathStash = [];
 
 function wrapBareLatex(src){
   if(!src) return src;
+  _codeStash = [];
+  _mathStash = [];
 
   // -------- Pass 0: protect code fences and inline code --------
   // We stash ```...``` and `...` so the per-line passes can't touch them.
-  const stash = [];
   src = src.replace(/```[\s\S]*?```|`[^`\n]+`/g, m => {
-    stash.push(m);
-    return mathStashKey(stash.length - 1);
+    _codeStash.push(m);
+    return codeStashKey(_codeStash.length - 1);
   });
 
   // -------- Pass 0b: convert \(\) / \[\] delimiters to $ / $$ --------
@@ -2581,9 +2621,11 @@ function wrapBareLatex(src){
   // like math (TEX_CMD / TEX_SYM / TEX_IMPLICIT), otherwise it's just text
   // in brackets and we leave it alone.
   //
-  // Important: we also stash the resulting $$ ... $$ block, because the
-  // per-line passes (Pass 4/5) below would otherwise try to re-wrap the
-  // inner lines and produce nested $...$ inside the display block.
+  // Important: we stash the resulting $$ ... $$ block in the MATH stash,
+  // because marked with `breaks: true` would otherwise inject `<br>` between
+  // the delimiter lines (producing `<p>$$<br>...<br>$$</p>`) and break
+  // KaTeX rendering. The math placeholder survives marked untouched and is
+  // restored as raw HTML in renderFinalMarkdown before KaTeX runs.
   src = src.replace(/(^|\n)([ \t]*)\[([\s\S]*?)\]([ \t]*(?=\n|$))/g,
     (m, lead, indent, inner, tail) => {
       const t = inner.replace(/^[ \t]+|[ \t]+$/gm, '');
@@ -2591,16 +2633,21 @@ function wrapBareLatex(src){
       if(!TEX_CMD.test(t) && !TEX_SYM.test(t) && !TEX_IMPLICIT.test(t)) return m;
       const inner2 = t.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
       const block = '$$\n' + inner2 + '\n$$';
-      stash.push(block);
-      return lead + indent + mathStashKey(stash.length - 1) + tail;
+      _mathStash.push(block);
+      return lead + indent + mathStashKey(_mathStash.length - 1) + tail;
     });
 
-  // -------- Pass 1b: stash pre-existing $$ ... $$ and $ ... $ blocks --------
-  // If the model already emitted $$ ... $$ or $ ... $ delimiters, leave them
-  // alone. Per-line passes must not wrap their contents.
-  src = src.replace(/\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$/g, m => {
-    stash.push(m);
-    return mathStashKey(stash.length - 1);
+  // -------- Pass 1b: stash pre-existing $$ ... $$ blocks --------
+  // Multi-line display math must be hidden from marked entirely. With
+  // `breaks: true`, marked would inject <br> between the delimiter lines,
+  // producing `<p>$$<br>...\br>$$</p>` — KaTeX then either fails silently
+  // or renders with <br> artifacts (every token on its own line, breaking
+  // subscripts like `I_C`). Single-line inline `$...$` math is fine to
+  // leave inline; marked's italic regex needs underscores on *both* sides
+  // of the token, so plain `I_C` doesn't get mangled.
+  src = src.replace(/\$\$[\s\S]*?\$\$/g, m => {
+    _mathStash.push(m);
+    return mathStashKey(_mathStash.length - 1);
   });
 
   // -------- Pass 2: single-line `[ ... ]` with TeX -> $...$ --------
@@ -2677,7 +2724,9 @@ function wrapBareLatex(src){
   }).join('\n');
 
   // -------- Pass 6: restore code fences/spans --------
-  src = src.replace(/\x00MATHSTASH(\d+)\x00/g, (_, i) => stash[+i]);
+  // Math placeholders stay — they are restored as raw HTML in
+  // renderFinalMarkdown after marked has parsed the rest of the message.
+  src = src.replace(/\x00CODESTASH(\d+)\x00/g, (_, i) => _codeStash[+i]);
 
   return src;
 }
@@ -2706,6 +2755,42 @@ function renderFinalMarkdown(bubble, text){
     return;
   }
   bubble.innerHTML = html;
+  // Restore math placeholders that wrapBareLatex left behind. marked would
+  // otherwise inject <br> inside multi-line $$ ... $$ blocks (because of
+  // `breaks: true`), which KaTeX's auto-render either ignores or renders
+  // with artifacts. We splice the placeholders back as raw HTML here so
+  // KaTeX sees clean `$$ ... $$` delimiters with no <br> between them.
+  if(_mathStash.length){
+    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT, null);
+    const targets = [];
+    let n;
+    while((n = walker.nextNode())){
+      if(n.nodeValue.includes('\x00MATHSTASH')) targets.push(n);
+    }
+    for(const text of targets){
+      const frag = document.createDocumentFragment();
+      const re = /\x00MATHSTASH(\d+)\x00/g;
+      let last = 0, m;
+      while((m = re.exec(text.nodeValue))){
+        if(m.index > last) frag.appendChild(document.createTextNode(text.nodeValue.slice(last, m.index)));
+        const block = _mathStash[+m[1]] || '';
+        // Wrap display blocks ($$ ... $$) in a span KoKaTeX-friendly. Inline
+        // ($ ... $) is left as a text node inline with surrounding prose.
+        const isDisplay = /^\$\$/.test(block.trim());
+        if(isDisplay){
+          const span = document.createElement('span');
+          span.className = 'math-display';
+          span.textContent = block;
+          frag.appendChild(span);
+        } else {
+          frag.appendChild(document.createTextNode(block));
+        }
+        last = re.lastIndex;
+      }
+      if(last < text.nodeValue.length) frag.appendChild(document.createTextNode(text.nodeValue.slice(last)));
+      text.parentNode.replaceChild(frag, text);
+    }
+  }
   // Structure first, colours second. decorateCodeBlocks must run before
   // highlighting so a late hljs retry can always find the blocks inside
   // their .code-block wrappers.
@@ -2733,22 +2818,26 @@ function renderFinalMarkdown(bubble, text){
   tryRenderMath();
 }
 
-// Cheap in-place streamer. Uses a single text node + cursor span. We append
-// to the existing text node rather than rebuilding innerHTML, so KaTeX on
-// already-finalized older bubbles stays untouched and the DOM thrash is gone.
+// Cheap in-place streamer. Uses a single text node + cursor span inside
+// the bubble's `.bubble-text` wrapper. We append to the existing text
+// node rather than rebuilding innerHTML, so KaTeX on already-finalized
+// older bubbles stays untouched and the DOM thrash is gone.
+//
+// Writing to the wrapper (not `.bubble` itself) is important: bubbles
+// with an image attachment have the image as a sibling of `.bubble-text`,
+// so clearing `.bubble.textContent` would wipe the image mid-stream.
 function appendStreamingText(bubble, text){
-  // Lazy-create the text node + cursor on first use.
-  if(!bubble._streamNode){
-    bubble.textContent = ''; // clear any "thinking…" placeholder
+  const holder = bubble._streamHolder || (bubble._streamHolder = bubble.querySelector('.bubble-text'));
+  if(!holder._streamNode){
+    holder.textContent = ''; // clear the "thinking…" dots
     const node = document.createTextNode(text);
-    bubble.appendChild(node);
+    holder.appendChild(node);
     const cursor = document.createElement('span');
     cursor.className = 'cursor-blink-inline';
-    bubble.appendChild(cursor);
-    bubble._streamNode = node;
-    bubble._cursor = cursor;
+    holder.appendChild(cursor);
+    holder._streamNode = node;
   } else {
-    bubble._streamNode.data += text;
+    holder._streamNode.data += text;
   }
 }
 
@@ -3429,6 +3518,7 @@ function addRow(role, content, streaming, imageDataUrl, time, save){
     bubble.appendChild(img);
   }
   const textHolder = document.createElement('div');
+  textHolder.className = 'bubble-text';
   bubble.appendChild(textHolder);
   if(role === 'assistant' && streaming){
     const dots = document.createElement('span');
@@ -3937,7 +4027,12 @@ async function sendMessage(text, opts){
   chat.messages.push(userMsg);
   touchChat(chat);
   saveState();
-  renderMessages();
+  // Append-only — don't tear down and rebuild the chat. Full rebuilds were
+  // re-running decorateCodeBlocks + KaTeX on every prior message, which got
+  // visibly slow after 3-4 turns and was the leading suspect for "AI stopped
+  // replying" reports. addRow() with save=true handles the empty-state
+  // hiding for us.
+  addRow(userMsg.role, userMsg.content, false, userMsg.imageDataUrl, userMsg.time, true);
   renderChatList();
 
   if(!opts.regenerate){
@@ -3966,6 +4061,22 @@ async function sendMessage(text, opts){
 
   abortController = new AbortController();
 
+  // Streaming watchdog. Ollama can hang mid-generation — context overflow
+  // on small models, the daemon being killed, a network blip on a LAN
+  // setup — without sending the terminal `{ "done": true }` frame, so
+  // the fetch stays open forever and the user sees an indefinite spinner.
+  // Reset on every chunk landed; trip only when genuinely stalled for
+  // 10 minutes.
+  let lastChunkAt = Date.now();
+  const streamWatchdog = setInterval(() => {
+    if(!isStreaming){ clearInterval(streamWatchdog); return; }
+    if(Date.now() - lastChunkAt > 10 * 60 * 1000){
+      clearInterval(streamWatchdog);
+      if(abortController) abortController.abort();
+      showError('Ollama stopped sending tokens for over 10 minutes. The model may have crashed or run out of context. Stop and try a shorter prompt.');
+    }
+  }, 30 * 1000);
+
   const adapter = { build: buildOllamaRequest, parse: parseOllamaStream };
 
   try{
@@ -3982,6 +4093,7 @@ async function sendMessage(text, opts){
 
     evalCount = await adapter.parse(reader, decoder, (piece) => {
       fullReply += piece;
+      lastChunkAt = Date.now();
       appendStreamingText(bubble, piece);
       scrollToBottom(true);
     });
@@ -3999,6 +4111,7 @@ async function sendMessage(text, opts){
       setOnline(false, 'offline');
     }
   }finally{
+    clearInterval(streamWatchdog);
     isStreaming = false;
     abortController = null;
     el.sendBtn.classList.remove('stop-mode');
@@ -4282,10 +4395,24 @@ document.addEventListener('paste', e => {
 document.addEventListener('keydown', e => {
   if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){
     e.preventDefault();
+    if(isStreaming){
+      // Don't abandon the in-flight reply to a shortcut the user might
+      // have hit by accident while typing — nudge them toward Esc instead.
+      showToast('A reply is still streaming — press Esc to stop, or click "New chat"');
+      return;
+    }
     createChat();
   }
-  if(e.key === 'Escape' && isMobile()){
-    closeSidebar();
+  if(e.key === 'Escape'){
+    // Esc stops streaming everywhere now (previously it only closed the
+    // mobile sidebar drawer). Mirrors the muscle memory of every other
+    // chat app the user has ever used.
+    if(isStreaming){
+      stopStreaming();
+      e.preventDefault();
+      return;
+    }
+    if(isMobile()) closeSidebar();
   }
 });
 
