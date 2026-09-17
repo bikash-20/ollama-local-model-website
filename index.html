@@ -23,6 +23,27 @@
 <meta name="msapplication-TileColor" content="#0a0a12">
 <meta name="msapplication-TileImage" content="./assets/icon-maskable-512.png">
 <meta name="format-detection" content="telephone=no">
+<!-- Content Security Policy. `unsafe-inline` is required because the app
+     ships as one self-contained index.html with the entire runtime as
+     an inline <script>; dropping it would require splitting the script
+     into a separate file (tracked for a future hardening pass).
+     connect-src allows Ollama on localhost, voice endpoints on localhost,
+     and any HTTPS host (covers users who proxy Ollama behind HTTPS). -->
+<!--
+  CSP via meta tag (the app ships as a single static HTML file, so we can't
+  ship CSP headers from a server). Notes:
+    - script-src / style-src need 'unsafe-inline' because the entire app is
+      one inline <script> and inline <style>; splitting those out is out of
+      scope for this audit.
+    - frame-ancestors / sandbox / report-uri / report-to are ignored when
+      delivered via meta — only the HTTP header honors them. We rely on
+      `X-Frame-Options: DENY` at the deployment layer for clickjacking
+      protection; the meta CSP deliberately omits frame-ancestors to avoid
+      a console warning.
+    - connect-src allows Ollama on localhost (11434 and any user-pinned
+      port) plus any https endpoint for users who tunnel Ollama remotely.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self';">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -1832,190 +1853,6 @@ const MODEL_CATALOG = [
   { name: 'wizard-vicuna-uncensored:7b', family: 'wizard', parameterSize: '7B', quantization: 'Q4_K_M', format: 'gguf', description: 'Wizard Vicuna Uncensored 7B.' },
 ];
 
-// Legacy remote catalog retained only for migration compatibility.
-const FREELLMAPI_CATALOG = [
-  // Google (10). Mirrors the provider keys configured in the local
-  // FreeLLMAPI router (freeapi.db → api_keys, status=healthy), kept in
-  // sync with the live /v1/models response.
-  { name: 'gemini-2.5-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 2.5 Flash — fast multimodal chat.' },
-  { name: 'gemini-2.5-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 2.5 Flash Lite — lightweight, fast.' },
-  { name: 'gemini-3-flash-preview',           family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3 Flash (preview) — latest generation.' },
-  { name: 'gemini-3.1-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.1 Flash Lite — quick, multimodal.' },
-  { name: 'gemini-3.5-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.5 Flash — current flagship free tier.' },
-  { name: 'gemini-3.5-flash-lite',            family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.5 Flash Lite — fast everyday chat.' },
-  { name: 'gemini-3.6-flash',                 family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini 3.6 Flash — newest flash update.' },
-  { name: 'gemini-robotics-er-2-preview',     family: 'google',    parameterSize: '—', quantization: '', vision: true, format: 'openai', description: 'Google Gemini Robotics ER 2 (preview).' },
-  { name: 'gemma-4-26b-a4b-it',               family: 'google',    parameterSize: '26B', quantization: '', vision: true, format: 'openai', description: 'Google Gemma 4 26B (A4B, instruct) — open-weights.' },
-  { name: 'gemma-4-31b-it',                   family: 'google',    parameterSize: '31B', quantization: '', vision: true, format: 'openai', description: 'Google Gemma 4 31B (instruct) — open-weights.' },
-
-  // Groq (9)
-  { name: 'allam-2-7b',                       family: 'groq',      parameterSize: '7B',  quantization: '', format: 'openai', description: 'Groq Allam 2 7B — fast inference on Groq hardware.' },
-  { name: 'groq/compound',                    family: 'groq',      parameterSize: '—',   quantization: '', vision: true, format: 'openai', description: 'Groq Compound — vision-capable router model.' },
-  { name: 'groq/compound-mini',               family: 'groq',      parameterSize: '—',   quantization: '', format: 'openai', description: 'Groq Compound Mini — compact variant.' },
-  { name: 'meta-llama/llama-prompt-guard-2-22m', family: 'groq',   parameterSize: '22M', quantization: '', format: 'openai', description: 'Meta Llama Prompt Guard 2 (22M) — safety classifier.' },
-  { name: 'meta-llama/llama-prompt-guard-2-86m', family: 'groq',   parameterSize: '86M', quantization: '', format: 'openai', description: 'Meta Llama Prompt Guard 2 (86M) — safety classifier.' },
-  { name: 'openai/gpt-oss-120b',              family: 'groq',      parameterSize: '120B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS 120B via Groq — open-weights.' },
-  { name: 'openai/gpt-oss-20b',               family: 'groq',      parameterSize: '20B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS 20B via Groq — open-weights.' },
-  { name: 'openai/gpt-oss-safeguard-20b',     family: 'groq',      parameterSize: '20B', quantization: '', format: 'openai', description: 'OpenAI GPT-OSS Safeguard 20B — safety model.' },
-  { name: 'qwen/qwen3.6-27b',                 family: 'groq',      parameterSize: '27B', quantization: '', format: 'openai', description: 'Qwen 3.6 27B via Groq.' },
-
-  // Mistral (12)
-  { name: 'codestral-latest',                 family: 'mistral',   parameterSize: '22B', quantization: '', format: 'openai', description: 'Mistral Codestral — code generation specialist.' },
-  { name: 'devstral-latest',                  family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Devstral — developer workflow model.' },
-  { name: 'devstral-medium-latest',           family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Devstral Medium — mid-size developer model.' },
-  { name: 'magistral-medium-latest',          family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Magistral Medium — agentic reasoning.' },
-  { name: 'magistral-small-latest',           family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Magistral Small — compact reasoning.' },
-  { name: 'ministral-14b-latest',             family: 'mistral',   parameterSize: '14B', quantization: '', format: 'openai', description: 'Mistral Ministral 14B — edge-class model.' },
-  { name: 'ministral-8b-latest',              family: 'mistral',   parameterSize: '8B',  quantization: '', format: 'openai', description: 'Mistral Ministral 8B — edge-class model.' },
-  { name: 'mistral-code-agent-latest',        family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Code Agent — autonomous coding agent.' },
-  { name: 'mistral-code-latest',              family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Code — coding-focused model.' },
-  { name: 'mistral-medium-latest',            family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Medium — higher-quality flagship.' },
-  { name: 'mistral-small-latest',             family: 'mistral',   parameterSize: '24B', quantization: '', format: 'openai', description: 'Mistral Small 3.2 24B — fast general assistant.' },
-  { name: 'mistral-vibe-cli-fast',            family: 'mistral',   parameterSize: '—',   quantization: '', format: 'openai', description: 'Mistral Vibe CLI Fast — terminal-optimised.' },
-
-  // OpenRouter (8, :free endpoints)
-  { name: 'cohere/north-mini-code:free',      family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Cohere North Mini (code) via OpenRouter free tier.' },
-  { name: 'google/gemma-4-26b-a4b-it:free',   family: 'openrouter', parameterSize: '26B', quantization: '', format: 'openai', description: 'Google Gemma 4 26B via OpenRouter free tier.' },
-  { name: 'google/gemma-4-31b-it:free',       family: 'openrouter', parameterSize: '31B', quantization: '', format: 'openai', description: 'Google Gemma 4 31B via OpenRouter free tier.' },
-  { name: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', family: 'openrouter', parameterSize: '30B', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3 Nano Omni (reasoning) via OpenRouter free tier.' },
-  { name: 'nvidia/nemotron-3-super-120b-a12b:free', family: 'openrouter', parameterSize: '120B', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3 Super via OpenRouter free tier.' },
-  { name: 'nvidia/nemotron-3.5-content-safety:free', family: 'openrouter', parameterSize: '—', quantization: '', format: 'openai', description: 'NVIDIA Nemotron 3.5 Content Safety via OpenRouter free tier.' },
-  { name: 'poolside/laguna-s-2.1:free',       family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Poolside Laguna S 2.1 via OpenRouter free tier.' },
-  { name: 'poolside/laguna-xs-2.1:free',      family: 'openrouter', parameterSize: '—',   quantization: '', format: 'openai', description: 'Poolside Laguna XS 2.1 via OpenRouter free tier.' },
-];
-
-// Providers that the FreeLLMAPI dashboard lists under "Hidden (no keys)"
-// — i.e. the user has not configured a key for them, so any model routed
-// through them will fail. We never want these in the picker because
-// picking one would just error on every request.
-//
-// Source: FreeLLMAPI dashboard "Hidden (no keys)" section. If /v1/models
-// still includes models from one of these providers, we filter them out
-// client-side as a defense in depth — the server's own filter is the
-// primary mechanism.
-const FREELLMAPI_HIDDEN_PROVIDERS = new Set([
-  'zhipu', 'cohere', 'cloudflare', 'ollama-cloud', 'ollama', 'llm7',
-  'nvidia', 'kilo', 'huggingface', 'opencode', 'agnes', 'aihorde',
-  'ainative', 'aion', 'bazaarlink', 'modelscope', 'nara', 'navy',
-  'ovh', 'reka', 'requesty', 'sealion'
-]);
-
-// Models that should NEVER appear in the picker even if /v1/models
-// returns them. The router name itself (`freellmapi`, `free-llm-api`,
-// `router`) is the most important entry — picking "FreeLLMAPI" as a
-// model would route the request back into the router's own dispatch
-// logic and just error out. We also exclude common non-chat models
-// (embedding, image, audio) by type when the API exposes that.
-const FREELLMAPI_EXCLUDED_MODEL_IDS = new Set([
-  'freellmapi', 'free-llm-api', 'free_llm_api', 'router', 'unified',
-  'auto', 'best'
-]);
-
-// Curated vision-capable model lookup. /v1/models on FreeLLMAPI exposes
-// `supportsVision` per the dashboard's data shape, but if the API ever
-// drops that field or returns a stale response, Phase 3's PDF
-// rasterization logic needs a fallback so it doesn't silently break.
-//
-// IMPORTANT: this is a conservative *positive* list. Models NOT in this
-// table are assumed non-vision. False positives (claiming vision when
-// the model doesn't support it) would silently send image bytes that
-// the model can't decode; false negatives (claiming no vision when the
-// model supports it) just fall back to text-extraction, which is safe.
-// So when in doubt, leave the model OUT of this table.
-const FREELLMAPI_VISION_MODELS = new Set([
-  // Google Gemini + Gemma (curated from router catalog: supports_vision=1)
-  'gemini-3-flash-preview', 'gemini-3.1-flash-lite',
-  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
-  'gemini-2.0-pro', 'gemini-2.0-flash', 'gemini-1.5-pro',
-  'gemini-1.5-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
-  'gemini-3.6-flash', 'gemini-robotics-er-2-preview',
-  'gemma-4-26b-a4b-it', 'gemma-4-31b-it',
-  // OpenAI
-  'gpt-5.4', 'gpt-5', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo',
-  'gpt-4-vision-preview', 'o1', 'o1-mini', 'o3', 'o3-mini',
-  // Anthropic
-  'claude-3.5-sonnet', 'claude-3-opus', 'claude-3-sonnet',
-  'claude-3-haiku', 'claude-4-opus', 'claude-4-sonnet',
-  // Mistral (recent vision-capable)
-  'mistral-medium-3.5', 'pixtral-12b', 'pixtral-large',
-  // Meta Llama 3.2 vision
-  'llama-3.2-90b-vision', 'llama-3.2-11b-vision',
-  // xAI Grok 2 vision
-  'grok-2-vision', 'grok-4.1-fast-reasoning',
-  // Groq (curated from router catalog: supports_vision=1)
-  'groq/compound',
-  // Open-source vision models surfaced via the router
-  'llava:13b', 'llava-llama3:8b', 'minicpm-v', 'qwen2-vl-72b',
-  'qwen2-vl-7b', 'internvl2'
-]);
-
-// Resolve vision capability for a model id. Trust the API when present;
-// fall back to the curated table; otherwise assume no vision so the
-// safe text-extraction path runs in Phase 3.
-function isFreellmapiVisionModel(modelId, apiFlag){
-  if(apiFlag === true) return true;
-  if(apiFlag === false) return false;
-  if(!modelId) return false;
-  // Strip provider prefix like "google/gemini-3-flash-preview" if the
-  // router ever uses namespaced ids.
-  const bare = String(modelId).split('/').pop();
-  return FREELLMAPI_VISION_MODELS.has(bare) ||
-         FREELLMAPI_VISION_MODELS.has(String(modelId));
-}
-
-// Map a single /v1/models entry to the shared state.models shape used
-// by populateModelDropdown. Defensive parser — accepts several
-// response shapes since we can't observe the server directly without
-// a valid key.
-//
-// FreeLLMAPI model metadata shape (inferred from the dashboard JS):
-//   {
-//     id: 'gemini-3-flash-preview',      // chat target
-//     object: 'model',
-//     owned_by: 'google',                 // provider
-//     supportsVision: true,               // vision flag (optional)
-//     context_length: 1000000,            // optional
-//     type: 'chat' | 'embedding' | ...   // optional
-//   }
-function mapFreellmapiModel(raw){
-  if(!raw || typeof raw !== 'object') return null;
-  const id = raw.id || raw.name || '';
-  if(!id) return null;
-  if(FREELLMAPI_EXCLUDED_MODEL_IDS.has(String(id).toLowerCase())) return null;
-
-  // Provider extraction. The dashboard uses `owned_by` (OpenAI spec)
-  // but some routers expose `provider` or nest under a `meta` block.
-  const provider = String(
-    raw.owned_by || raw.provider || (raw.meta && raw.meta.provider) || ''
-  ).toLowerCase().trim();
-  if(provider && FREELLMAPI_HIDDEN_PROVIDERS.has(provider)){
-    // Provider has no keys configured — picking this model would error.
-    return null;
-  }
-
-  // Type filter. Some routers expose embedding/image models in /v1/models;
-  // we only want chat models in the picker. If type is missing we
-  // assume chat (per OpenAI convention).
-  const type = String(raw.type || raw.object || 'chat').toLowerCase();
-  if(type === 'embedding' || type === 'image' || type === 'audio') return null;
-
-  // Vision flag. API value wins; otherwise curated table.
-  const vision = isFreellmapiVisionModel(id, raw.supportsVision || raw.vision);
-
-  return {
-    name: id,
-    family: provider || String(id).split('-')[0] || 'remote',
-    parameterSize: raw.context_length ? raw.context_length.toLocaleString() + ' ctx' : '—',
-    quantization: '',
-    format: 'openai',
-    description: raw.description || (provider ? provider + ' / ' + id : id),
-    provider: provider,
-    vision: vision,
-    type: type,
-    rpd: raw.rpd || null  // rate-limit per day, populated later from /api/fallback/rate-limit-usage if available
-  };
-}
-
 const el = {
   messages: document.getElementById('messages'),
   emptyState: document.getElementById('emptyState'),
@@ -2568,7 +2405,7 @@ function preprocessMarkdown(src){
 // We keep the list generous so we don't miss common ones like \binom, \cdot,
 // \mapsto, or log-ish operators. The full list is a superset of what KaTeX
 // itself supports; we just need at least one hit to fire the wrap heuristic.
-const TEX_CMD = /\\(?:frac|tfrac|dfrac|binom|sqrt|root|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|sum|prod|int|oint|lim|sin|cos|tan|cot|sec|csc|log|ln|exp|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|omicron|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|partial|nabla|forall|exists|nexists|emptyset|cup|cap|subset|supset|subseteq|supseteq|in|notin|to|mapsto|rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow|vec|hat|bar|tilde|overline|underline|widehat|widetilde|mathbf|mathrm|mathit|mathcal|mathfrak|mathbb|mathsf|text|begingroup|endgroup|operatorname|textstyle|displaystyle|scriptstyle|scriptscriptstyle|left|right|big|Big|bigg|Bigg|begin|end|tag|label|hspace|color|boxed|cancel|fbox|stackrel|overset|underset|substack|pmod|mod|bmod|quad|qquad|ldots|cdots|dots|vdots|ddots|circ|bullet|star|dagger|ddagger|amalg|ast|oplus|ominus|otimes|oslash|wr|propto|prec|preceq|succ|succeq|asymp|doteq|cong|bowtie|models|perp|mid|parallel|angle|triangle|square|lozenge|blacksquare|clubsuit|diamondsuit|heartsuit|spadesuit|suit|hbar|ell|imath|jmath|Re|Im|surd|prime|backprime|wp|mh)/;
+const TEX_CMD = /\\(?:frac|tfrac|dfrac|binom|sqrt|root|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|sum|prod|int|oint|lim|sin|cos|tan|cot|sec|csc|log|ln|exp|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|omicron|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|partial|nabla|forall|exists|nexists|emptyset|cup|cap|subset|supset|subseteq|supseteq|in|notin|to|mapsto|rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow|vec|hat|bar|tilde|overline|underline|widehat|widetilde|mathbf|mathrm|mathit|mathcal|mathfrak|mathbb|mathsf|text|begingroup|endgroup|operatorname|textstyle|displaystyle|scriptstyle|scriptscriptstyle|left|right|big|Big|bigg|Bigg|begin|end|tag|label|hspace|color|boxed|cancel|fbox|stackrel|overset|underset|substack|pmod|mod|bmod|quad|qquad|ldots|cdots|dots|vdots|ddots|circ|bullet|star|dagger|ddagger|amalg|ast|oplus|ominus|otimes|oslash|wr|propto|prec|preceq|succ|succeq|asymp|doteq|cong|bowtie|models|perp|mid|parallel|angle|triangle|square|lozenge|blacksquare|clubsuit|diamondsuit|heartsuit|spadesuit|suit|hbar|ell|imath|jmath|Re|Im|surd|prime|backprime|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|smallmatrix|overrightarrow|overleftarrow|Overrightarrow|Overleftarrow|wp)/;
 // TEX_SYM: unicode math symbols that the model might emit verbatim.
 const TEX_SYM = /[∑∏∫√∂∇∞≈≠≤≥±∓→←↑↓∈∉⊂⊃∪∩·×÷]/;
 // Implicit-math signal: things like x^2, a_n, x_i that only make sense as LaTeX
@@ -2598,8 +2435,15 @@ const HAS_ENGLISH_WORD = /\b(?:the|of|and|are|was|were|to|when|then|for|with|fro
 // injects `<br>` inside multi-line `$$ ... $$` blocks, which KaTeX's
 // auto-render either ignores (no rendering) or renders with artifacts
 // (every token on its own line, breaking subscripts like `I_C`).
-function mathStashKey(i){ return '\x00MATHSTASH' + i + '\x00'; }
-function codeStashKey(i){ return '\x00CODESTASH' + i + '\x00'; }
+// Marker character used to hide code / multi-line math blocks from `marked`
+// so its `breaks: true` mode can't inject `<br>` between delimiter lines. We
+// deliberately pick U+E000 — a Private Use Area codepoint that the HTML5
+// parser preserves through `innerHTML` assignment (NUL bytes used to be the
+// marker but the parser strips them silently, which broke every multi-line
+// $$ block). U+E000 is invisible, never in user input, and round-trips
+// through marked → innerHTML → TreeWalker intact.
+function mathStashKey(i){ return 'MATHSTASH' + i + ''; }
+function codeStashKey(i){ return 'CODESTASH' + i + ''; }
 
 // Last-call stash arrays. wrapBareLatex rewrites these; renderFinalMarkdown
 // reads them to restore math blocks after marked has done its damage.
@@ -2750,7 +2594,7 @@ function wrapBareLatex(src){
   // -------- Pass 6: restore code fences/spans --------
   // Math placeholders stay — they are restored as raw HTML in
   // renderFinalMarkdown after marked has parsed the rest of the message.
-  src = src.replace(/\x00CODESTASH(\d+)\x00/g, (_, i) => _codeStash[+i]);
+  src = src.replace(/CODESTASH(\d+)/g, (_, i) => _codeStash[+i]);
 
   return src;
 }
@@ -2789,11 +2633,11 @@ function renderFinalMarkdown(bubble, text){
     const targets = [];
     let n;
     while((n = walker.nextNode())){
-      if(n.nodeValue.includes('\x00MATHSTASH')) targets.push(n);
+      if(n.nodeValue.includes('MATHSTASH')) targets.push(n);
     }
     for(const text of targets){
       const frag = document.createDocumentFragment();
-      const re = /\x00MATHSTASH(\d+)\x00/g;
+      const re = /MATHSTASH(\d+)/g;
       let last = 0, m;
       while((m = re.exec(text.nodeValue))){
         if(m.index > last) frag.appendChild(document.createTextNode(text.nodeValue.slice(last, m.index)));
@@ -2963,10 +2807,6 @@ function setOnline(isOnline, stateName){
 // Ollama is the only supported runtime backend. The model list comes from
 // the daemon's /api/tags endpoint and is normalized for the picker.
 async function loadModels(silent){
-  return loadOllamaModels(silent);
-}
-
-async function loadOllamaModels(silent){
   if(!silent) el.refreshBtn.classList.add('spin');
   setOnline(false, 'checking');
   try{
@@ -3011,105 +2851,6 @@ async function loadOllamaModels(silent){
     state.models = [];
     populateModelDropdown(true, MODEL_CATALOG);
     showPersistentOffline(offlineReason(err));
-  }finally{
-    setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
-  }
-}
-
-async function loadFreellmapiModels(silent){
-  // Probe /v1/models (OpenAI-compatible). The endpoint returns the
-  // dashboard's full model catalog when reachable; on any failure we
-  // fall back to the small static catalog so the picker stays usable
-  // in environments where the router is unreachable (different
-  // machine, CORS-blocked hosted page, missing key, etc.).
-  //
-  // On failure we surface a *specific* toast — "CORS blocked", "key
-  // rejected", "router not running" — so the user knows whether to
-  // fix the URL, the key, or the deployment mode.
-  if(!silent) el.refreshBtn.classList.add('spin');
-  setOnline(false, 'checking');
-  const base = (state.freellmapiUrl || 'http://localhost:3001/v1').replace(/\/+$/, '');
-  const headers = { 'Content-Type': 'application/json' };
-  if(settings.freellmapiKey) headers['Authorization'] = 'Bearer ' + settings.freellmapiKey;
-  try{
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 3000);
-    let res;
-    try{
-      res = await fetch(base + '/models', { headers: headers, signal: ctrl.signal });
-    } catch(networkErr){
-      // Same diagnostic logic as testBackendUrl, but expressed as a
-      // short toast instead of an Error.
-      const sameOrigin = (() => {
-        try { return new URL(base).origin === location.origin; } catch(_) { return false; }
-      })();
-      if(location.protocol === 'https:' && /^http:\/\//i.test(base)){
-        throw new Error('mixed content: page is https://, router is http://');
-      }
-      if(!sameOrigin){
-        throw new Error('cross-origin: page is at ' + location.origin + ', router is at ' + (() => { try { return new URL(base).origin; } catch(_) { return base; } })() + ' — open index.html from the same origin as the router');
-      }
-      throw new Error('router unreachable: ' + (networkErr.message || networkErr));
-    }
-    clearTimeout(tid);
-    if(!res.ok){
-      if(res.status === 401 || res.status === 403){
-        throw new Error('auth: server returned ' + res.status + ' — API key rejected');
-      }
-      throw new Error('server returned ' + res.status);
-    }
-    const data = await res.json();
-    setOnline(true, 'ok');
-    hideError();
-    // OpenAI /v1/models returns { data: [{ id, ... }] }. Map each entry
-    // to the shared state.models shape so populateModelDropdown works.
-    // Vision flag and provider come from the response when present;
-    // otherwise we fall back to a curated lookup so Phase 3 (PDF
-    // rasterization) doesn't silently break on an unknown model.
-    const list = Array.isArray(data.data) ? data.data : [];
-    state.models = list
-      .map(m => mapFreellmapiModel(m))
-      .filter(m => m && m.name);
-    if(state.models.length === 0){
-      state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
-      // Same logic as the catch below: don't paint the dot red for a
-      // cloud-backend failure. Yellow-checking tells the user the
-      // router was reachable but had no chat models to offer.
-      setOnline(false, 'checking');
-      showToast('FreeLLMAPI returned no models — using static catalog.');
-      populateModelDropdown(false, FREELLMAPI_CATALOG);
-      return;
-    }
-    // Live list succeeded — it IS the picker list. Unlike the Ollama
-    // path, FreeLLMAPI catalog entries must NOT be appended as "not
-    // installed" suggestions: there's nothing to `ollama pull` for a
-    // remote router, and a model absent from /v1/models would just
-    // error on send. The static catalog is the fallback only and is
-    // already substituted above when the live list comes back empty.
-    populateModelDropdown(false, []);
-  }catch(err){
-    if(err && err.name === 'AbortError'){
-      // Slow router — keep previous list, no UI flap. Don't paint
-      // "connected" green though, that would be misleading: the
-      // request timed out, so the router is currently unreachable.
-      // Use the same amber-checking state as a real network error.
-      state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
-      populateModelDropdown(false, FREELLMAPI_CATALOG);
-      setOnline(false, 'checking');
-      showToast('FreeLLMAPI: timed out — using static catalog.');
-      return;
-    }
-    state.models = FREELLMAPI_CATALOG.map(c => Object.assign({ size: 0 }, c));
-    populateModelDropdown(false, FREELLMAPI_CATALOG);
-    // Don't flip the status dot to red "error" — for the FreeLLMAPI
-    // backend that same red used to signal "Ollama is down, nothing
-    // works". For cloud it just means the router's currently
-    // unreachable; the Phase 1 stub still answers, so keep the dot
-    // in a neutral/checked state (yellow-ish checking colour) and let
-    // the toast carry the diagnostic. The dot still flips red only
-    // when the *Ollama* backend is the one that's offline.
-    setOnline(false, 'checking');
-    showToast('FreeLLMAPI: ' + (err.message || 'router unreachable') + ' — using static catalog.');
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
   }
@@ -3217,10 +2958,7 @@ function paintMetrics(m){
 //     show every catalog entry with size=0.
 //   - catalogOnly=false → backend is online; show installed models
 //     first, then un-installed catalog entries as suggestions.
-//   - catalog defaults to MODEL_CATALOG (Ollama); pass FREELLMAPI_CATALOG
-//     for the FreeLLMAPI loader. The Ollama-only suffixes ("· not
-//     installed" / "· pull to use") are suppressed when the active
-//     backend is FreeLLMAPI — those models aren't pulled locally.
+//   - catalog defaults to MODEL_CATALOG (Ollama local models).
 //
 // The picker is rendered into the custom popup (button + search + listbox)
 // rather than a native <select>. For ≤8 models we render a flat list —
@@ -3723,24 +3461,16 @@ function finaliseReply(bubble, chat, text, evalCount, streamStart){
 }
 
 // ─── Backend adapter layer ─────────────────────────────────────────────
-// Two backends: 'ollama' (today's path) and 'freellmapi' (Phase 2 wires
-// real streaming; Phase 1 ships a clear stub). Each adapter exports:
-//   buildRequest(history, model, opts) → { url, init }
-//   parseStream(reader, decoder, onChunk) → final evalCount
-//
-// `history` is always the backend-agnostic shape produced by
-// buildApiHistory():
+// `history` is the backend-agnostic shape produced by buildApiHistory():
 //   [{ role, content, attachments?: [{ kind, dataUrl|... }] }]
 //
-// Conversion to each backend's wire format is the adapter's job. The
-// Ollama adapter must produce bit-identical wire output to today's
-// inline sendMessage() implementation so existing behavior is preserved.
+// Conversion to Ollama's wire format is buildOllamaRequest's job.
 
 function buildApiHistory(chatMessages){
   // Convert stored chat messages → backend-agnostic history.
-  // Reads both the new `attachments[]` field (Phase 1+) and the legacy
-  // `images[]` field (old chats saved before Phase 1). Old chats keep
-  // loading because the adapter layer treats both shapes identically.
+  // Reads both the new `attachments[]` field and the legacy `images[]`
+  // field (old chats saved before the attachments migration). Old chats
+  // keep loading because the adapter treats both shapes identically.
   return chatMessages.map(m => {
     const out = { role: m.role, content: m.content };
     const atts = [];
@@ -3824,180 +3554,6 @@ async function parseOllamaStream(reader, decoder, onChunk){
   // The final chunk usually has no trailing newline, so the last JSON line
   // (with the tail of the reply) is still sitting in `buffer` — flush the
   // decoder and process it, or long answers silently lose their ending.
-  buffer += decoder.decode();
-  if(buffer.trim()) buffer.split('\n').forEach(consumeLine);
-  return evalCount;
-}
-
-function buildFreellmapiRequest(history, model, opts){
-  // OpenAI-compatible /v1/chat/completions request. History comes in
-  // as backend-agnostic shape from buildApiHistory (attachments[] in
-  // Phase 1+ form, role/content fields always populated).
-  //
-  // Content shape rules:
-  //   • Plain text messages → content: "string" (compact, matches the
-  //     wire format every router supports).
-  //   • Messages with image attachments AND the active model has
-  //     vision:true → content: [text, image_url, ...] (OpenAI's
-  //     multi-part shape). Router receives the data URL directly.
-  //   • Messages with attachments but a non-vision model → attachments
-  //     are dropped with a one-time toast warning. We don't try to
-  //     OCR/rasterize here; Phase 3 handles that on the upload path
-  //     when a non-vision model is picked. Silently dropping the image
-  //     would be more surprising than warning once.
-  //
-  // The vision flag is sourced from state.models — same lookup the
-  // dropdown UI uses to paint the 📷 badge. If the model isn't in
-  // state.models (e.g. freshly typed name) we default to non-vision.
-  const activeModel = state.models.find(m => m && m.name === model);
-  const isVision = !!(activeModel && activeModel.vision === true);
-
-  const messages = history.map(m => {
-    const imgs = Array.isArray(m.attachments)
-      ? m.attachments.filter(a => a && a.kind === 'image' && a.dataUrl)
-      : [];
-    if(imgs.length === 0){
-      // Plain text — keep the compact string form.
-      return { role: m.role, content: m.content };
-    }
-    if(!isVision){
-      // Non-vision model: drop the images, keep the text. We don't
-      // warn per-message (could be N messages × M images → toast
-      // storm); the warning fires once at upload time in Phase 3.
-      return { role: m.role, content: m.content };
-    }
-    // Vision model: emit OpenAI's content-array shape. Preserve
-    // order so text precedes images (the OpenAI spec doesn't require
-    // this but most clients emit it that way and routers handle it
-    // uniformly).
-    const parts = [{ type: 'text', text: m.content || '' }];
-    imgs.forEach(a => {
-      parts.push({ type: 'image_url', image_url: { url: a.dataUrl } });
-    });
-    return { role: m.role, content: parts };
-  });
-
-  const body = {
-    model: model,
-    messages: messages,
-    stream: true,
-    ...(typeof opts.temperature === 'number' ? { temperature: opts.temperature } : {})
-  };
-  const headers = { 'Content-Type': 'application/json' };
-  if(opts.freellmapiKey) headers['Authorization'] = 'Bearer ' + opts.freellmapiKey;
-  return {
-    url: (opts.freellmapiUrl || 'http://localhost:3001/v1').replace(/\/+$/, '') + '/chat/completions',
-    init: {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(body),
-      signal: opts.signal
-    }
-  };
-}
-
-async function parseFreellmapiStream(reader, decoder, onChunk){
-  // Phase 2: real OpenAI-compatible SSE parser.
-  // Wire format with stream:true:
-  //   data: {"choices":[{"delta":{"content":"Hello"},"index":0}]}\n\n
-  //   data: {"choices":[{"delta":{"content":" world"},"index":0}]}\n\n
-  //   data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{...}}\n\n
-  //   data: [DONE]\n\n
-  //
-  // Each chunk is one JSON object on a single line prefixed by `data: `.
-  // The deltas concatenate to form the full reply; [DONE] is the
-  // terminal sentinel (no JSON parsing). Routers occasionally emit
-  // comment lines (`: heartbeat`) which we ignore.
-  //
-  // When a request is rejected before streaming starts (401/403/404 on
-  // the model, quota exceeded), the router returns a single JSON
-  // envelope: `{"error":{"message":"...","type":"..."}}`. We detect
-  // that and throw — the sendMessage catch block surfaces it in the
-  // bubble so the user sees *why* the model failed instead of a stalled
-  // empty reply.
-  //
-  // The chunk-accumulation scaffolding (split-on-\n, buffer the tail,
-  // flush the decoder at EOF) mirrors parseOllamaStream so both parsers
-  // handle partial-line boundaries the same way.
-  let buffer = '';
-  let evalCount = 0; // OpenAI's stream chunks don't include usage by
-                     // default; left at 0 unless the router emits a
-                     // final usage chunk (some do).
-  let firstChunk = true; // set false after we've inspected the leading
-                         // bytes — used to short-circuit the
-                         // "non-conformant router returning a JSON
-                         // error envelope on a 200 response" case.
-  const consumeLine = (rawLine) => {
-    const line = rawLine.replace(/\r$/, '');
-    if(!line.trim()) return;
-    // SSE comments / heartbeats start with ':'. Ignore.
-    if(line.startsWith(':')) return;
-    // Only `data:` lines carry payload. Some routers send other SSE
-    // fields (event:, id:, retry:); we don't need them, skip.
-    if(!line.startsWith('data:')) return;
-    const payload = line.slice(5).trim();
-    if(payload === '[DONE]') return;
-    let json;
-    try{ json = JSON.parse(payload); }
-    catch(_){ return; /* malformed — skip, don't crash the stream */ }
-    // Error envelope from the router (model not found, key rejected,
-    // rate limit, etc). Throw so the catch block can paint the
-    // specific reason into the bubble.
-    if(json.error){
-      const msg = (json.error && json.error.message) || (typeof json.error === 'string' ? json.error : JSON.stringify(json.error));
-      throw new Error('router: ' + msg);
-    }
-    const choice = json.choices && json.choices[0];
-    if(!choice) return;
-    const piece = choice.delta && choice.delta.content;
-    if(typeof piece === 'string' && piece) onChunk(piece);
-    // Some routers emit a final usage object outside the choices array.
-    // Catch that opportunistically — evalCount stays 0 otherwise, which
-    // is fine (the metrics bar already hides speed for cloud backends).
-    if(json.usage && typeof json.usage.completion_tokens === 'number'){
-      evalCount = json.usage.completion_tokens;
-    }
-  };
-  while(true){
-    const { value, done } = await reader.read();
-    if(done) break;
-    buffer += decoder.decode(value, { stream: true });
-    if(firstChunk){
-      // Some routers (FreeLLMAPI included) occasionally return an HTTP
-      // 200 response with a JSON error envelope in the body when
-      // `stream: true` was requested but the model lookup / auth check
-      // failed before the stream could start. The body is
-      // `{"error":{"message":"…","type":"…"}}` with no `data:` prefix,
-      // so the line-based parser below would silently no-op and the
-      // user would see an empty reply. Detect this up front and throw
-      // a `router:` error so the sendMessage catch paints a useful
-      // message into the bubble.
-      const head = buffer.trimStart();
-      if(head.startsWith('{')){
-        try{
-          const env = JSON.parse(head);
-          if(env && env.error){
-            const m = (env.error && env.error.message) || (typeof env.error === 'string' ? env.error : JSON.stringify(env.error));
-            throw new Error('router: ' + m);
-          }
-        }catch(parseErr){
-          if(parseErr && parseErr.message && parseErr.message.indexOf('router:') === 0) throw parseErr;
-          // Otherwise the JSON was malformed but the line-based parser
-          // is still our best shot — keep going.
-        }
-      }
-      firstChunk = false;
-    }
-    // SSE separates events with blank lines (\n\n); we split on \n
-    // and skip empties. The last partial line stays in `buffer` so
-    // the next read appends to it.
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    lines.forEach(consumeLine);
-  }
-  // The final chunk often has no trailing newline, so any partial
-  // line is still sitting in `buffer`. Flush the decoder and process
-  // it — otherwise long replies silently lose their ending.
   buffer += decoder.decode();
   if(buffer.trim()) buffer.split('\n').forEach(consumeLine);
   return evalCount;
@@ -4373,9 +3929,6 @@ async function testBackendUrl(url){
   } finally { clearTimeout(t); }
 }
 
-// Backwards-compatible wrapper. New code should call testBackendUrl directly.
-async function testOllamaUrl(url){ return testBackendUrl(url); }
-
 el.prefsBtn.addEventListener('click', () => { closeSidebar(); openPrefs(); });
 el.prefsCancel.addEventListener('click', closePrefs);
 el.prefsModal.addEventListener('click', e => { if(e.target === el.prefsModal) closePrefs(); });
@@ -4411,7 +3964,7 @@ el.prefsSave.addEventListener('click', async () => {
   showToast('Preferences saved');
   loadModels(true);
 });
-// Prefs modal handlers are attached above (openPrefs/closePrefs/testOllamaUrl).
+// Prefs modal handlers are attached above (openPrefs/closePrefs/testBackendUrl).
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
     el.input.value = chip.dataset.prompt;

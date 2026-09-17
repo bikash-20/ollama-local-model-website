@@ -110,7 +110,7 @@ const cases = [
       const inlineBlockCount = (out.match(/\$\$[\s\S]*?\$\$/g) || []).length;
       if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$...$$ blocks (should be stashed), got ${inlineBlockCount}\n${out}`);
       // Two placeholders should be present.
-      const placeholderCount = (out.match(/\x00MATHSTASH\d+\x00/g) || []).length;
+      const placeholderCount = (out.match(/\uE000MATHSTASH\d+\uE000/g) || []).length;
       if(placeholderCount < 2) throw new Error(`expected >=2 placeholders, got ${placeholderCount}\n${out}`);
     }
   },
@@ -170,7 +170,7 @@ Q_1 = \\frac{(n+1)}{4}^{\\text{th}} \\text{ term}
       if(!block) throw new Error(`expected a $$ ... $$ block in math stash, got: ${JSON.stringify(stash)}\n--- out ---\n${out}`);
       if((block.match(/\$\$/g) || []).length !== 2) throw new Error(`stash block should have exactly 2 $$ markers, got ${block}`);
       // The placeholder should appear in the output text once.
-      if(!/\x00MATHSTASH0\x00/.test(out)) throw new Error(`expected placeholder \\x00MATHSTASH0\\x00 in output, got:\n${out}`);
+      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected placeholder \\uE000MATHSTASH0\\uE000 in output, got:\n${out}`);
     }
   },
   {
@@ -285,7 +285,7 @@ solved by elimination`,
       }
       // Output text has the placeholder (no $$ inline).
       if((out.match(/\$\$/g) || []).length !== 0) throw new Error(`expected 0 inline $$ (stashed), got:\n${out}`);
-      if(!/\x00MATHSTASH0\x00/.test(out)) throw new Error(`expected placeholder in output:\n${out}`);
+      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected placeholder in output:\n${out}`);
     }
   },
   {
@@ -370,10 +370,113 @@ $$`,
       const inlineBlockCount = (out.match(/\$\$/g) || []).length;
       if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$ markers (stashed), got ${inlineBlockCount}\n${out}`);
       // Both placeholders should appear in the output text.
-      const placeholderCount = (out.match(/\x00MATHSTASH\d+\x00/g) || []).length;
+      const placeholderCount = (out.match(/\uE000MATHSTASH\d+\uE000/g) || []).length;
       if(placeholderCount !== 2) throw new Error(`expected 2 placeholders, got ${placeholderCount}\n${out}`);
       // The surrounding prose ("Here:") should survive intact.
       if(!out.includes('Here:')) throw new Error(`prose around math was lost:\n${out}`);
+    }
+  },
+  // ---- Regression tests for the production-readiness audit ----
+  // The PUA (U+E000) marker was introduced after the original 22 cases
+  // were written. These tests guard both the marker migration and the
+  // matrix / vector-arrow additions to TEX_CMD.
+  {
+    name: 'placeholder marker is U+E000 (survives innerHTML round trip)',
+    input: `First formula:\n\n$$\n\\tan\\theta = \\left| \\frac{m_2 - m_1}{1 + m_1m_2} \\right|\n$$\n\nSecond formula:\n\n$$\n\\tan\\theta = \\left| \\frac{2\\sqrt{h^2 - ab}}{a + b} \\right|\n$$`,
+    expect: (out) => {
+      // The two $$ blocks are stashed. Each must use U+E000 on BOTH sides
+      // of MATHSTASH<index> so the HTML parser preserves them through
+      // innerHTML assignment. NUL bytes (the old marker) MUST NOT appear.
+      if(/ MATHSTASH/.test(out)) throw new Error(`old NUL marker still in use — would be stripped by HTML parser:\n${out}`);
+      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected \\uE000MATHSTASH0\\uE000 placeholder, got:\n${out}`);
+      if(!/\uE000MATHSTASH1\uE000/.test(out)) throw new Error(`expected \\uE000MATHSTASH1\\uE000 placeholder, got:\n${out}`);
+      // No $$ markers should appear inline (they're stashed).
+      const inlineBlockCount = (out.match(/\$\$/g) || []).length;
+      if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$ markers, got ${inlineBlockCount}\n${out}`);
+    }
+  },
+  {
+    name: 'bare-line \\begin{pmatrix} is detected as math (on a pure-math line)',
+    // On a line whose entire content is math, Pass 4 wraps it in $...$.
+    input: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}',
+    expect: (out) => {
+      if(!/\$[^$]*\\begin\{pmatrix\}[^$]*\$/.test(out)) {
+        throw new Error(`expected pure-math line wrapped in $...$ for pmatrix, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'prose line with embedded \\begin{pmatrix} is left alone (model must delimit)',
+    // Lines with surrounding English prose are NOT wrapped wholesale — Pass 4
+    // skips them (HAS_ENGLISH_WORD guard). The model is expected to wrap
+    // inline math in `$...$` or `\(...\)` itself.
+    input: 'Consider the matrix \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} for arbitrary values.',
+    expect: (out) => {
+      // Output should be unchanged.
+      if(out !== 'Consider the matrix \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} for arbitrary values.') {
+        throw new Error(`expected prose line left unchanged, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'bare-line \\begin{bmatrix} is detected as math',
+    input: '\\begin{bmatrix} 1 & 2 \\\\ 3 & 4 \\end{bmatrix}',
+    expect: (out) => {
+      if(!/\$[^$]*\\begin\{bmatrix\}[^$]*\$/.test(out)) {
+        throw new Error(`expected line wrapped in $...$ for bmatrix, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'bare-line \\begin{vmatrix} (determinant) is detected as math',
+    input: '\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix} = ad - bc',
+    expect: (out) => {
+      if(!/\$[^$]*\\begin\{vmatrix\}[^$]*\$/.test(out)) {
+        throw new Error(`expected line wrapped in $...$ for vmatrix, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'pure-math line with \\overrightarrow{v} is wrapped in $...$',
+    // \\overrightarrow is in TEX_CMD. On a pure-math line, Pass 4 wraps it.
+    input: '\\overrightarrow{v} = (1, 0, 0)',
+    expect: (out) => {
+      if(!/\$[^$]*\\overrightarrow\{v\}[^$]*\$/.test(out)) {
+        throw new Error(`expected pure-math line wrapped in $...$ for overrightarrow, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'prose line with embedded \\overrightarrow{v} is left alone',
+    // Same HAS_ENGLISH_WORD guard as the pmatrix prose case — model must
+    // delimit inline math itself.
+    input: 'The velocity \\overrightarrow{v} = (1, 0, 0) is the unit x-direction.',
+    expect: (out) => {
+      if(out !== 'The velocity \\overrightarrow{v} = (1, 0, 0) is the unit x-direction.') {
+        throw new Error(`expected prose line left unchanged, got:\n${out}`);
+      }
+    }
+  },
+  {
+    name: 'idempotent under innerHTML round trip (mocked)',
+    // This is the unit-level proxy for the end-to-end test in
+    // tests/matrix-vector.spec.mjs: a string stashed with our marker
+    // must survive the same code path the HTML parser applies.
+    fn: 'wrapBareLatex',
+    input: '$$\n\\tan\\theta = \\left| x \\right|\n$$',
+    expect: (out) => {
+      // The single placeholder is in the output.
+      if(!/\uE000MATHSTASH0\uE000/.test(out)) {
+        throw new Error(`expected single placeholder, got:\n${out}`);
+      }
+      // The placeholder text (the $$ block itself) is in the stash and
+      // contains the LaTeX delimiters — when renderFinalMarkdown splices
+      // it back as raw HTML, those delimiters are what KaTeX sees.
+      const stash = stashByIndex(_mathStashRef);
+      if(stash.length !== 1) throw new Error(`expected 1 stash entry, got ${stash.length}: ${JSON.stringify(stash)}`);
+      if(!/^\$\$\n\\tan\\theta/.test(stash[0])) {
+        throw new Error(`stash entry should start with $$ + newline + LaTeX, got: ${JSON.stringify(stash[0])}`);
+      }
     }
   }
 ];
