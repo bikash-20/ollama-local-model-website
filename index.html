@@ -43,7 +43,7 @@
     - connect-src allows Ollama on localhost (11434 and any user-pinned
       port) plus any https endpoint for users who tunnel Ollama remotely.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self';">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -1918,6 +1918,7 @@ const el = {
   speakerBtn: document.getElementById('speakerBtn'),
   recDot: document.getElementById('recDot'),
   voiceStatus: document.getElementById('voiceStatus'),
+  hint: document.getElementById('hint'),
 };
 
 let state = { chats: [], activeId: null, theme: 'dark', accent: 'aurora', textTheme: '', activeModel: null, models: [], sidebarCollapsed: false, serverUrl: 'http://localhost:11434', metrics: { ram: 0, vram: 0, context: 0, lastUpdated: 0 } };
@@ -1992,13 +1993,17 @@ function loadState(){
   delete state.freellmapiKey;
   delete settings.freellmapiUrl;
   delete settings.freellmapiKey;
+  let migrated = false;
   state.chats.forEach(chat => {
+    const before = chat.messages.length;
     chat.messages = chat.messages.filter(message =>
       !(message && message.role === 'assistant' && /FreeLLMAPI router at|FreeLLMAPI router/i.test(message.content || ''))
     );
+    if(chat.messages.length !== before) migrated = true;
   });
-  saveState();
-  saveSettings();
+  // Only persist if we actually mutated something. Saves a full
+  // localStorage.stringify on every cold boot for users with long histories.
+  if(migrated){ saveState(); saveSettings(); }
 }
 function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -2425,25 +2430,21 @@ const EQUATION_LIKE = /^[\s]*[A-Za-z0-9_\^\\\+\-\*\/\=\(\)\{\}\[\]\.,:'\s]+[\s]*
 const HAS_ENGLISH_WORD = /\b(?:the|of|and|are|was|were|to|when|then|for|with|from|that|where|but|not|into|onto|over|also|such|these|those|their|there|here|this|which|what|how|why|than|does|did|has|have|had|can|could|may|might|will|would|should|shall|you|they|while|using|used|becomes|equals|where|given|since|through|thus|hence|because|although|though|whereas|accordingly|therefore|otherwise|wherever|whereby)\b/i;
 
 // Math-stash marker. We protect code spans/fences from math-wrapping, then
-// restore them at the end. The marker uses NULL bytes which can never appear
-// in a real chat message (unless the user pastes literal NULs — in which
-// case they have bigger problems).
+// restore them at the end. `stash` holds CODE blocks (restored in Pass 6)
+// and MATH blocks (deferred to renderFinalMarkdown). We split them so the
+// math placeholders survive marked.parse untouched — critical because
+// marked with `breaks: true` injects `<br>` inside multi-line `$$ ... $$`
+// blocks, which KaTeX's auto-render either ignores (no rendering) or
+// renders with artifacts (every token on its own line, breaking
+// subscripts like `I_C`).
 //
-// `stash` holds CODE blocks (restored in Pass 6) and MATH blocks (deferred
-// to renderFinalMarkdown). We split them so the math placeholders survive
-// marked.parse untouched — critical because marked with `breaks: true`
-// injects `<br>` inside multi-line `$$ ... $$` blocks, which KaTeX's
-// auto-render either ignores (no rendering) or renders with artifacts
-// (every token on its own line, breaking subscripts like `I_C`).
-// Marker character used to hide code / multi-line math blocks from `marked`
-// so its `breaks: true` mode can't inject `<br>` between delimiter lines. We
-// deliberately pick U+E000 — a Private Use Area codepoint that the HTML5
-// parser preserves through `innerHTML` assignment (NUL bytes used to be the
-// marker but the parser strips them silently, which broke every multi-line
-// $$ block). U+E000 is invisible, never in user input, and round-trips
-// through marked → innerHTML → TreeWalker intact.
-function mathStashKey(i){ return 'MATHSTASH' + i + ''; }
-function codeStashKey(i){ return 'CODESTASH' + i + ''; }
+// The marker is an ASCII sentinel (%%NOCTA-MATH-n%% / %%NOCTA-CODE-n%%)
+// chosen so it round-trips intact through marked.parse → innerHTML →
+// TreeWalker. Earlier versions used NUL bytes and U+E000 (Private Use
+// Area); both have shipped parsers / minifiers that strip them
+// silently, which broke every multi-line $$ block.
+function mathStashKey(i){ return '%%NOCTA-MATH-' + i + '%%'; }
+function codeStashKey(i){ return '%%NOCTA-CODE-' + i + '%%'; }
 
 // Last-call stash arrays. wrapBareLatex rewrites these; renderFinalMarkdown
 // reads them to restore math blocks after marked has done its damage.
@@ -2594,7 +2595,7 @@ function wrapBareLatex(src){
   // -------- Pass 6: restore code fences/spans --------
   // Math placeholders stay — they are restored as raw HTML in
   // renderFinalMarkdown after marked has parsed the rest of the message.
-  src = src.replace(/CODESTASH(\d+)/g, (_, i) => _codeStash[+i]);
+  src = src.replace(/%%NOCTA-CODE-(\d+)%%/g, (_, i) => _codeStash[+i]);
 
   return src;
 }
@@ -2633,11 +2634,11 @@ function renderFinalMarkdown(bubble, text){
     const targets = [];
     let n;
     while((n = walker.nextNode())){
-      if(n.nodeValue.includes('MATHSTASH')) targets.push(n);
+      if(n.nodeValue.includes('NOCTA-MATH-')) targets.push(n);
     }
     for(const text of targets){
       const frag = document.createDocumentFragment();
-      const re = /MATHSTASH(\d+)/g;
+      const re = /%%NOCTA-MATH-(\d+)%%/g;
       let last = 0, m;
       while((m = re.exec(text.nodeValue))){
         if(m.index > last) frag.appendChild(document.createTextNode(text.nodeValue.slice(last, m.index)));
@@ -2847,9 +2848,13 @@ async function loadModels(silent){
       return;
     }
     setOnline(false, 'local');
-    // Ollama unreachable. Show the catalog as a "what you could install" list.
-    state.models = [];
-    populateModelDropdown(true, MODEL_CATALOG);
+    // Ollama unreachable. Show the catalog as a "what you could install" list,
+    // but only if we have no previously known models — nuking the existing
+    // list on a transient 5xx / DNS blip would orphan whatever model the
+    // user is mid-conversation with.
+    if(!state.models || state.models.length === 0){
+      populateModelDropdown(true, MODEL_CATALOG);
+    }
     showPersistentOffline(offlineReason(err));
   }finally{
     setTimeout(() => el.refreshBtn.classList.remove('spin'), 700);
@@ -3072,6 +3077,7 @@ function buildModelRow(m){
   const row = document.createElement('div');
   row.className = 'model-row';
   row.setAttribute('role', 'option');
+  row.tabIndex = -1;
   row.dataset.value = m.name;
   row.dataset.searchHaystack = (h.display + ' ' + (m.provider || '') + ' ' + m.name + ' ' + (m.description || '')).toLowerCase();
   if(m.notInstalled) row.classList.add('not-installed');
@@ -3816,11 +3822,52 @@ document.addEventListener('click', (e) => {
   const wrap = document.getElementById('modelSelectWrap');
   if(wrap && !wrap.contains(e.target)) closeModelPopup();
 });
-// Esc on the trigger closes it for keyboard users.
+// Esc on the trigger closes it for keyboard users. ArrowDown / ArrowUp /
+// Enter on the closed trigger open the popup (ArrowUp focuses the last
+// row so keyboard users can wrap to the bottom without paging).
 el.modelSelectBtn.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && !el.modelPopup.hidden){ closeModelPopup(); }
-  else if((e.key === 'ArrowDown' || e.key === 'Enter') && el.modelPopup.hidden){
-    e.preventDefault(); openModelPopup();
+  if(el.modelPopup.hidden){
+    if(e.key === 'ArrowDown' || e.key === 'Enter'){
+      e.preventDefault(); openModelPopup();
+      const rows = el.modelPopupList.querySelectorAll('.model-row');
+      if(rows.length) rows[0].focus();
+    } else if(e.key === 'ArrowUp'){
+      e.preventDefault(); openModelPopup();
+      const rows = el.modelPopupList.querySelectorAll('.model-row');
+      if(rows.length) rows[rows.length - 1].focus();
+    }
+  } else if(e.key === 'Escape'){
+    closeModelPopup();
+  }
+});
+
+// ArrowUp / ArrowDown navigate rows in the open popup. Mirrors the ARIA
+// listbox pattern so keyboard-only users can actually pick a model.
+el.modelPopup.addEventListener('keydown', (e) => {
+  if(e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const rows = Array.from(el.modelPopupList.querySelectorAll('.model-row'))
+    .filter(r => r.style.display !== 'none');
+  if(!rows.length) return;
+  e.preventDefault();
+  const active = document.activeElement;
+  const idx = active && active.classList && active.classList.contains('model-row')
+    ? rows.indexOf(active)
+    : -1;
+  let next;
+  if(e.key === 'ArrowDown'){
+    next = idx < 0 ? rows[0] : rows[Math.min(idx + 1, rows.length - 1)];
+  } else {
+    next = idx <= 0 ? rows[0] : rows[idx - 1];
+  }
+  if(next) next.focus();
+});
+
+// Enter on a focused row picks it (the row itself is a div, not a button).
+el.modelPopup.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && e.target && e.target.classList && e.target.classList.contains('model-row')){
+    e.preventDefault();
+    setActiveModel(e.target.dataset.value);
+    closeModelPopup();
   }
 });
 el.attachBtn.addEventListener('click', () => el.fileInput.click());
@@ -3841,6 +3888,31 @@ el.darkSwitch.addEventListener('click', toggleTheme);
 el.darkRow.addEventListener('click', e => {
   if(e.target.closest('.switch')) return;
   toggleTheme();
+});
+// Keyboard activation for the div-role-button rows. Native <button> gets
+// Enter/Space for free; for div[role=button] we have to wire it ourselves
+// or keyboard-only users can't reach Preferences / Export / Clear / Dark.
+function keyboardActivate(node, handler){
+  if(!node) return;
+  node.addEventListener('keydown', e => {
+    if(e.key === 'Enter' || e.key === ' '){
+      e.preventDefault();
+      handler(e);
+    }
+  });
+}
+keyboardActivate(el.darkRow,    () => toggleTheme());
+keyboardActivate(el.prefsBtn,   () => { closeSidebar(); openPrefs(); });
+keyboardActivate(el.exportBtn,  () => { exportChat(); closeSidebar(); });
+keyboardActivate(el.clearAllBtn,() => {
+  closeSidebar();
+  confirmModal('Clear all chats?', 'This will permanently delete every conversation. This cannot be undone.', () => {
+    state.chats = []; state.activeId = null;
+    saveState();
+    renderChatList();
+    renderMessages();
+    showToast('All chats cleared');
+  });
 });
 el.exportBtn.addEventListener('click', () => { exportChat(); closeSidebar(); });
 el.clearAllBtn.addEventListener('click', () => {
@@ -4021,6 +4093,21 @@ window.addEventListener('resize', () => {
 
 // Restore persisted sidebar state on desktop; on mobile the drawer is always closed at boot.
 if(state.sidebarCollapsed && !isMobile()) document.body.classList.add('sidebar-collapsed');
+
+// If the user hasn't picked a theme yet (Default), follow the OS-level
+// light/dark switch in real time. Otherwise stay with whatever the user
+// chose manually.
+if(!localStorage.getItem(STORE_KEY) || (() => {
+  try { return !(JSON.parse(localStorage.getItem(STORE_KEY) || '{}').theme); }
+  catch(_) { return true; }
+})()){
+  if(window.matchMedia){
+    const mql = window.matchMedia('(prefers-color-scheme: light)');
+    const sync = () => { state.theme = mql.matches ? 'light' : 'dark'; applyTheme(); };
+    sync();
+    if(mql.addEventListener) mql.addEventListener('change', sync);
+  }
+}
 
 if(state.chats.length > 0 && !state.activeId){
   state.activeId = state.chats[state.chats.length - 1].id;
@@ -4361,13 +4448,19 @@ async function voiceSpeakAssistant(text, bubble){
     if(!r.ok) throw new Error('TTS responded with ' + r.status);
     const buf = await r.arrayBuffer();
     if(!buf.byteLength) throw new Error('TTS returned empty audio');
+    // Hold a stable ArrayBuffer for the lifetime of this playback. Some
+    // browsers detach `buf` after `.slice(0)`, which used to leave the
+    // <audio> fallback reaching into a detached buffer if Web Audio
+    // failed to decode.
+    let stableBuf = buf;
 
     // Prefer Web Audio (token survives the user-gesture window once we've
     // primed it in the mic click). Fall back to <audio> if Web Audio is
     // somehow unavailable.
     if(voiceCtx){
       try{
-        const audioBuf = await voiceCtx.decodeAudioData(buf.slice(0));
+        const audioBuf = await voiceCtx.decodeAudioData(stableBuf.slice(0));
+        stableBuf = null; // ownership transferred
         const src = voiceCtx.createBufferSource();
         src.buffer = audioBuf;
         src.connect(voiceCtx.destination);
@@ -4380,12 +4473,16 @@ async function voiceSpeakAssistant(text, bubble){
         src.start(0);
         return;
       }catch(_){
-        // Fall through to <audio> fallback below.
+        // Fall through to <audio> fallback below. `stableBuf` still owns
+        // the bytes for Blob construction.
       }
     }
 
-    // Fallback: <audio> element
-    const blob = new Blob([buf], { type: r.headers.get('content-type') || 'audio/wav' });
+    // Fallback: <audio> element. Build the Blob from `stableBuf` (a copy,
+    // so subsequent Web Audio retries don't fight us for the buffer).
+    const blobSource = stableBuf ? stableBuf.slice(0) : buf;
+    stableBuf = null;
+    const blob = new Blob([blobSource], { type: r.headers.get('content-type') || 'audio/wav' });
     const url = URL.createObjectURL(blob);
     voiceAudio = new Audio(url);
     voiceAudio.addEventListener('ended', () => {

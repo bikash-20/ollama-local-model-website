@@ -64,6 +64,17 @@ def _ssl_context() -> tuple[ssl.SSLContext, bool]:
 def _candidate_urls(voice: str, base_override: str | None) -> list[str]:
     if base_override:
         return [base_override.rstrip("/")]
+    # The HuggingFace mirror currently only publishes en_US voices. Other
+    # locales (de_DE-…, fr_FR-…, etc.) will always 404 unless the user
+    # points PIPER_VOICE_URL at a self-hosted mirror. Bail out early so the
+    # caller gets a clear error instead of hunting through the network
+    # logs wondering why nothing downloaded.
+    if not voice.startswith("en_US-"):
+        raise ValueError(
+            f"voice '{voice}' isn't en_US-* — the default Piper mirror "
+            "only ships English voices. Set PIPER_VOICE_URL to a mirror "
+            "that carries this locale, or pick an en_US-* voice."
+        )
     parts = voice.split("-")
     is_us = len(parts) >= 3 and parts[0] == "en" and parts[1] == "US"
     quality = parts[-1] if len(parts) >= 2 else "medium"
