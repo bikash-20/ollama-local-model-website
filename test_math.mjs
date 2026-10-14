@@ -110,7 +110,7 @@ const cases = [
       const inlineBlockCount = (out.match(/\$\$[\s\S]*?\$\$/g) || []).length;
       if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$...$$ blocks (should be stashed), got ${inlineBlockCount}\n${out}`);
       // Two placeholders should be present.
-      const placeholderCount = (out.match(/\uE000MATHSTASH\d+\uE000/g) || []).length;
+      const placeholderCount = (out.match(/%%NOCTA-MATH-\d+%%/g) || []).length;
       if(placeholderCount < 2) throw new Error(`expected >=2 placeholders, got ${placeholderCount}\n${out}`);
     }
   },
@@ -170,7 +170,7 @@ Q_1 = \\frac{(n+1)}{4}^{\\text{th}} \\text{ term}
       if(!block) throw new Error(`expected a $$ ... $$ block in math stash, got: ${JSON.stringify(stash)}\n--- out ---\n${out}`);
       if((block.match(/\$\$/g) || []).length !== 2) throw new Error(`stash block should have exactly 2 $$ markers, got ${block}`);
       // The placeholder should appear in the output text once.
-      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected placeholder \\uE000MATHSTASH0\\uE000 in output, got:\n${out}`);
+      if(!/%%NOCTA-MATH-0%%/.test(out)) throw new Error(`expected placeholder %%NOCTA-MATH-0%% in output, got:\n${out}`);
     }
   },
   {
@@ -285,7 +285,7 @@ solved by elimination`,
       }
       // Output text has the placeholder (no $$ inline).
       if((out.match(/\$\$/g) || []).length !== 0) throw new Error(`expected 0 inline $$ (stashed), got:\n${out}`);
-      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected placeholder in output:\n${out}`);
+      if(!/%%NOCTA-MATH-0%%/.test(out)) throw new Error(`expected placeholder in output:\n${out}`);
     }
   },
   {
@@ -370,26 +370,31 @@ $$`,
       const inlineBlockCount = (out.match(/\$\$/g) || []).length;
       if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$ markers (stashed), got ${inlineBlockCount}\n${out}`);
       // Both placeholders should appear in the output text.
-      const placeholderCount = (out.match(/\uE000MATHSTASH\d+\uE000/g) || []).length;
+      const placeholderCount = (out.match(/%%NOCTA-MATH-\d+%%/g) || []).length;
       if(placeholderCount !== 2) throw new Error(`expected 2 placeholders, got ${placeholderCount}\n${out}`);
       // The surrounding prose ("Here:") should survive intact.
       if(!out.includes('Here:')) throw new Error(`prose around math was lost:\n${out}`);
     }
   },
   // ---- Regression tests for the production-readiness audit ----
-  // The PUA (U+E000) marker was introduced after the original 22 cases
-  // were written. These tests guard both the marker migration and the
-  // matrix / vector-arrow additions to TEX_CMD.
+  // The ASCII sentinel (`%%NOCTA-MATH-<n>%%`) replaced the PUA (U+E000)
+  // and NUL-byte markers. The earlier markers were stripped by some HTML
+  // parsers and minifiers, which broke every multi-line `$$ ... $$` block.
+  // These tests guard both the marker migration and the matrix / vector-
+  // arrow additions to TEX_CMD.
   {
-    name: 'placeholder marker is U+E000 (survives innerHTML round trip)',
+    name: 'placeholder marker is ASCII sentinel (survives innerHTML round trip)',
     input: `First formula:\n\n$$\n\\tan\\theta = \\left| \\frac{m_2 - m_1}{1 + m_1m_2} \\right|\n$$\n\nSecond formula:\n\n$$\n\\tan\\theta = \\left| \\frac{2\\sqrt{h^2 - ab}}{a + b} \\right|\n$$`,
     expect: (out) => {
-      // The two $$ blocks are stashed. Each must use U+E000 on BOTH sides
-      // of MATHSTASH<index> so the HTML parser preserves them through
-      // innerHTML assignment. NUL bytes (the old marker) MUST NOT appear.
-      if(/ MATHSTASH/.test(out)) throw new Error(`old NUL marker still in use — would be stripped by HTML parser:\n${out}`);
-      if(!/\uE000MATHSTASH0\uE000/.test(out)) throw new Error(`expected \\uE000MATHSTASH0\\uE000 placeholder, got:\n${out}`);
-      if(!/\uE000MATHSTASH1\uE000/.test(out)) throw new Error(`expected \\uE000MATHSTASH1\\uE000 placeholder, got:\n${out}`);
+      // The two $$ blocks are stashed. Each must use the ASCII sentinel
+      // `%%NOCTA-MATH-<n>%%` so the HTML parser preserves them through
+      // innerHTML assignment. The PUA (U+E000) and NUL markers were
+      // stripped by some shipped parsers / minifiers, which broke every
+      // multi-line $$ block.
+      if(out.includes('\u0000MATHSTASH')) throw new Error(`old NUL marker still in use — would be stripped by HTML parser:\n${out}`);
+      if(out.includes('\uE000')) throw new Error(`old PUA (U+E000) marker still in use — would be stripped by some shipped parsers:\n${out}`);
+      if(!/%%NOCTA-MATH-0%%/.test(out)) throw new Error(`expected %%NOCTA-MATH-0%% placeholder, got:\n${out}`);
+      if(!/%%NOCTA-MATH-1%%/.test(out)) throw new Error(`expected %%NOCTA-MATH-1%% placeholder, got:\n${out}`);
       // No $$ markers should appear inline (they're stashed).
       const inlineBlockCount = (out.match(/\$\$/g) || []).length;
       if(inlineBlockCount !== 0) throw new Error(`expected 0 inline $$ markers, got ${inlineBlockCount}\n${out}`);
@@ -466,7 +471,7 @@ $$`,
     input: '$$\n\\tan\\theta = \\left| x \\right|\n$$',
     expect: (out) => {
       // The single placeholder is in the output.
-      if(!/\uE000MATHSTASH0\uE000/.test(out)) {
+      if(!/%%NOCTA-MATH-0%%/.test(out)) {
         throw new Error(`expected single placeholder, got:\n${out}`);
       }
       // The placeholder text (the $$ block itself) is in the stash and

@@ -8,7 +8,7 @@
 //   - Recognizes long vector arrows (overrightarrow/overleftarrow/Overrightarrow/
 //     Overleftarrow).
 //   - Wraps pure-math lines in `$...$`.
-//   - Stashes multi-line `$$ ... $$` blocks with the U+E000 marker so the
+//   - Stashes multi-line `$$ ... $$` blocks with the ASCII sentinel `%%NOCTA-MATH-<n>%%` so the
 //     HTML5 parser doesn't strip them.
 //
 // These tests drive the production `renderFinalMarkdown` pipeline (the same
@@ -30,7 +30,7 @@ async function renderInBubble(page, rawText) {
   await page.waitForFunction(() => typeof window.renderFinalMarkdown === 'function', null, { timeout: 5_000 });
 
   // Drive the exact production code path: renderFinalMarkdown attaches a
-  // bubble to the DOM, splices the U+E000 math placeholders back into
+  // bubble to the DOM, splices the ASCII sentinel math placeholders back into
   // `$$ ... $$` text, and then runs renderMathInElement over the result.
   const html = await page.evaluate((src) => {
     const bubble = document.createElement('div');
@@ -94,7 +94,7 @@ test.describe('matrix and vector math rendering', () => {
 
   test('multi-line $$ ... $$ block round-trips through innerHTML', async ({ page }) => {
     // The user-reported two-formula bug. The HTML5 parser must NOT strip our
-    // U+E000 marker, the stash must be restored to a real display-math block,
+    // ASCII sentinel `%%NOCTA-MATH-<n>%%`, the stash must be restored to a real display-math block,
     // and KaTeX must render both blocks (no MATHSTASH leakage in the bubble).
     const html = await renderInBubble(page,
       'First formula:\n\n$$\n\\tan\\theta = \\left| \\frac{m_2 - m_1}{1 + m_1m_2} \\right|\n$$\n\nSecond formula:\n\n$$\n\\tan\\theta = \\left| \\frac{2\\sqrt{h^2 - ab}}{a + b} \\right|\n$$'
@@ -102,6 +102,6 @@ test.describe('matrix and vector math rendering', () => {
     const displayBlocks = html.match(/class="katex-display"/g) || [];
     expect(displayBlocks.length).toBeGreaterThanOrEqual(2);
     expect(html).not.toMatch(/MATHSTASH/);
-    expect(html).not.toMatch(//); // raw U+E000
+    expect(html).not.toMatch(/NOCTA-MATH-\d+/); // placeholder must be replaced
   });
 });

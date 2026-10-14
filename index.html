@@ -966,10 +966,14 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   .bubble td code{white-space:nowrap;}
   @media (max-width:600px){.bubble table{font-size:12.5px;} .bubble th,.bubble td{padding:7px 10px;}}
 
-  .code-block{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid var(--glass-border);background:#0d1117;}
-  [data-theme="light"] .code-block{background:#f6f8fa;border-color:rgba(15,15,40,0.14);}
+  /* VS Code "Dark+" inspired code block. The bg #1e1e1e and the syntax
+     colors come straight from VS Code's default dark theme; light mode
+     follows GitHub's `light-default` palette so it still looks native in
+     either colour scheme. */
+  .code-block{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid var(--glass-border);background:#1e1e1e;box-shadow:0 4px 16px -8px rgba(0,0,0,0.4);}
+  [data-theme="light"] .code-block{background:#ffffff;border-color:rgba(15,15,40,0.16);box-shadow:0 4px 16px -8px rgba(15,15,40,0.10);}
   .code-header{display:flex;justify-content:space-between;align-items:center;padding:7px 14px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--glass-border);}
-  [data-theme="light"] .code-header{background:rgba(15,15,40,0.04);border-bottom-color:rgba(15,15,40,0.10);}
+  [data-theme="light"] .code-header{background:#f3f3f3;border-bottom-color:rgba(15,15,40,0.12);}
   .code-lang{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--text-low);letter-spacing:0.6px;text-transform:uppercase;}
   .code-lang::before{content:'';width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg, var(--aurora-a), var(--aurora-c));box-shadow:0 0 6px color-mix(in srgb, var(--aurora-c) 50%, transparent);opacity:0.85;}
   [data-theme="light"] .code-lang{color:var(--text-mid);}
@@ -985,28 +989,59 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   [data-theme="light"] .copy-btn:hover{background:rgba(15,15,40,0.07);color:#0f0f23;}
   .copy-btn.copied{color:var(--ok);border-color:rgba(94,234,212,0.4);background:rgba(94,234,212,0.08);}
   .copy-btn svg{width:11px;height:11px;}
+  /* VS Code–style two-column layout: gutter (line numbers) + source. */
+  .code-body{display:flex;background:transparent;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.65;overflow-x:auto;overflow-y:hidden;}
+  .code-gutter{
+    flex-shrink:0;
+    padding:14px 0;
+    text-align:right;
+    user-select:none;
+    background:rgba(255,255,255,0.025);
+    border-right:1px solid rgba(255,255,255,0.06);
+    min-width:48px;
+  }
+  [data-theme="light"] .code-gutter{background:#f6f8fa;border-right-color:rgba(15,15,40,0.08);}
+  .code-line-num{
+    display:block;
+    padding:0 14px 0 12px;
+    color:#858585;
+    font-variant-numeric:tabular-nums;
+    font-size:12px;
+  }
+  [data-theme="light"] .code-line-num{color:#8b949e;}
+  .code-source{flex:1;padding:14px 16px;white-space:pre;min-width:0;}
+  .code-source code{font-family:inherit !important;font-size:inherit !important;line-height:inherit;color:#d4d4d4;background:transparent;display:block;white-space:pre;}
+  [data-theme="light"] .code-source code{color:#24292f;}
+  /* Backwards-compat: when a code block is rendered without the gutter
+     (older bubbles, before the VS Code upgrade), still keep the original
+     pre/code styling sensible. */
   .code-block pre{margin:0;padding:14px 16px;overflow-x:auto;background:transparent !important;}
   .code-block pre::-webkit-scrollbar{height:6px;}
   .code-block pre::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:10px;}
   [data-theme="light"] .code-block pre::-webkit-scrollbar-thumb{background:rgba(15,15,40,0.18);}
-  .code-block code{font-family:'JetBrains Mono',monospace !important;font-size:12.5px;line-height:1.65;color:#abb2bf;}
+  .code-block code{font-family:'JetBrains Mono',monospace !important;font-size:12.5px;line-height:1.65;color:#d4d4d4;}
   [data-theme="light"] .code-block code{color:#24292f;}
-  /* Theme-aware syntax palette. The CDN atom-one-dark sheet is a nice-to-have;
-     these rules win by cascade (they live later in <head>) and guarantee the
-     code is coloured even when the CDN is slow, blocked, or offline — and they
-     adapt to light mode, which the CDN sheet never did. */
-  .code-block .hljs{color:#abb2bf;background:transparent;}
-  .code-block .hljs-comment,.code-block .hljs-quote{color:#7f848e;font-style:italic;}
-  .code-block .hljs-keyword,.code-block .hljs-selector-tag,.code-block .hljs-doctag,.code-block .hljs-template-tag,.code-block .hljs-meta .hljs-keyword{color:#c678dd;}
-  .code-block .hljs-string,.code-block .hljs-regexp,.code-block .hljs-addition{color:#98c379;}
-  .code-block .hljs-number,.code-block .hljs-literal,.code-block .hljs-symbol,.code-block .hljs-bullet{color:#d19a66;}
-  .code-block .hljs-title,.code-block .hljs-title.class_,.code-block .hljs-title.function_,.code-block .hljs-section{color:#61afef;}
-  .code-block .hljs-attr,.code-block .hljs-attribute,.code-block .hljs-variable,.code-block .hljs-template-variable,.code-block .hljs-type,.code-block .hljs-selector-class,.code-block .hljs-selector-id,.code-block .hljs-selector-attr,.code-block .hljs-selector-pseudo,.code-block .hljs-class{color:#e06c75;}
-  .code-block .hljs-built_in,.code-block .hljs-builtin-name,.code-block .hljs-name,.code-block .hljs-meta{color:#e5c07b;}
-  .code-block .hljs-deletion{color:#e06c75;}
-  .code-block .hljs-link{color:#61afef;text-decoration:underline;}
+  /* VS Code Dark+ syntax palette (canonical hex values from the theme).
+     The CDN atom-one-dark sheet is a nice-to-have; these rules win by
+     cascade (they live later in <head>) and guarantee the code is
+     coloured even when the CDN is slow, blocked, or offline — and they
+     adapt to light mode (GitHub light-default), which the CDN sheet
+     never did. */
+  .code-block .hljs{color:#d4d4d4;background:transparent;}
+  .code-block .hljs-comment,.code-block .hljs-quote{color:#6a9955;font-style:italic;}
+  .code-block .hljs-keyword,.code-block .hljs-selector-tag,.code-block .hljs-doctag,.code-block .hljs-template-tag,.code-block .hljs-meta .hljs-keyword{color:#c586c0;}
+  .code-block .hljs-string,.code-block .hljs-regexp,.code-block .hljs-addition{color:#ce9178;}
+  .code-block .hljs-number,.code-block .hljs-literal,.code-block .hljs-symbol,.code-block .hljs-bullet{color:#b5cea8;}
+  .code-block .hljs-title,.code-block .hljs-title.class_,.code-block .hljs-title.function_,.code-block .hljs-section{color:#569cd6;}
+  .code-block .hljs-attr,.code-block .hljs-attribute,.code-block .hljs-variable,.code-block .hljs-template-variable,.code-block .hljs-type,.code-block .hljs-selector-class,.code-block .hljs-selector-id,.code-block .hljs-selector-attr,.code-block .hljs-selector-pseudo,.code-block .hljs-class{color:#9cdcfe;}
+  .code-block .hljs-built_in,.code-block .hljs-builtin-name,.code-block .hljs-name,.code-block .hljs-meta{color:#4ec9b0;}
+  .code-block .hljs-tag{color:#569cd6;}
+  .code-block .hljs-params{color:#9cdcfe;}
+  .code-block .hljs-deletion{color:#f44747;}
+  .code-block .hljs-link{color:#569cd6;text-decoration:underline;}
   .code-block .hljs-emphasis{font-style:italic;}
   .code-block .hljs-strong{font-weight:600;}
+  /* GitHub light-default syntax palette (for light mode). */
   [data-theme="light"] .code-block .hljs{color:#24292f;background:transparent;}
   [data-theme="light"] .code-block .hljs-comment,[data-theme="light"] .code-block .hljs-quote{color:#6e7781;font-style:italic;}
   [data-theme="light"] .code-block .hljs-keyword,[data-theme="light"] .code-block .hljs-selector-tag,[data-theme="light"] .code-block .hljs-doctag,[data-theme="light"] .code-block .hljs-template-tag,[data-theme="light"] .code-block .hljs-meta .hljs-keyword{color:#cf222e;}
@@ -1015,7 +1050,9 @@ body.ready{opacity:1;transition:opacity .25s ease;}
   [data-theme="light"] .code-block .hljs-title,[data-theme="light"] .code-block .hljs-title.class_,[data-theme="light"] .code-block .hljs-title.function_,[data-theme="light"] .code-block .hljs-section{color:#8250df;}
   [data-theme="light"] .code-block .hljs-attr,[data-theme="light"] .code-block .hljs-attribute,[data-theme="light"] .code-block .hljs-variable,[data-theme="light"] .code-block .hljs-template-variable,[data-theme="light"] .code-block .hljs-type,[data-theme="light"] .code-block .hljs-selector-class,[data-theme="light"] .code-block .hljs-selector-id,[data-theme="light"] .code-block .hljs-selector-attr,[data-theme="light"] .code-block .hljs-selector-pseudo,[data-theme="light"] .code-block .hljs-class{color:#953800;}
   [data-theme="light"] .code-block .hljs-built_in,[data-theme="light"] .code-block .hljs-builtin-name,[data-theme="light"] .code-block .hljs-name,[data-theme="light"] .code-block .hljs-meta{color:#0550ae;}
-  [data-theme="light"] .code-block .hljs-deletion{color:#953800;}
+  [data-theme="light"] .code-block .hljs-tag{color:#116329;}
+  [data-theme="light"] .code-block .hljs-params{color:#953800;}
+  [data-theme="light"] .code-block .hljs-deletion{color:#82071e;}
   [data-theme="light"] .code-block .hljs-link{color:#8250df;}
 
   .katex{font-size:1.04em;}
@@ -2325,7 +2362,35 @@ function decorateCodeBlocks(container){
     header.appendChild(btn);
     pre.parentNode.insertBefore(wrapper, pre);
     wrapper.appendChild(header);
-    wrapper.appendChild(pre);
+    // VS Code–style: a numbered gutter on the left, and the code on the
+    // right. We split each line of the source so the gutter can mirror
+    // line numbers 1..N. The split happens before hljs is run, so the
+    // highlighting inside each <code> child is preserved per-line.
+    const rawText = code.textContent || '';
+    const lines = rawText.split('\n');
+    // If the very last line is just a trailing newline (common in fenced
+    // blocks), drop it so we don't show an empty trailing line number.
+    if(lines.length && lines[lines.length - 1] === '') lines.pop();
+    if(lines.length === 0) lines.push('');
+    const body = document.createElement('div');
+    body.className = 'code-body';
+    const gutter = document.createElement('div');
+    gutter.className = 'code-gutter';
+    gutter.setAttribute('aria-hidden', 'true');
+    const codeEl = document.createElement('div');
+    codeEl.className = 'code-source';
+    // Move the existing <code>'s HTML into the new container so the
+    // highlight.js classes inside stay intact.
+    codeEl.innerHTML = code.innerHTML;
+    for(let i = 1; i <= lines.length; i++){
+      const ln = document.createElement('span');
+      ln.className = 'code-line-num';
+      ln.textContent = String(i);
+      gutter.appendChild(ln);
+    }
+    body.appendChild(gutter);
+    body.appendChild(codeEl);
+    wrapper.appendChild(body);
   });
 }
 
